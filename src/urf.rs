@@ -60,6 +60,46 @@ pub fn urf_lagging(
     lagged_result
 }
 
+/// Creates a combined result of depletion from the lagged_result provided by the urf_lagging function
+///
+/// This function takes a hashmap of the lagged URF results and combines all the values for each reach
+/// into a single value. If there are multiple values across the reaches for the same month, they are summed up.
+/// The result is then sorted by date and returned as a vector of tuples.
+///
+/// # Parameters
+///
+/// - `values`: A `HashMap` where the keys are reach identifiers (`i32`), and the values are another `HashMap` with
+/// `NaiveDate` keys and `f64` values representing the lagged URF for each date.
+///
+/// # Returns
+///
+/// A vector of tuples, where each tuple contains:
+/// * A `NaiveDate` representing the start of a month.
+/// * A `f64` value representing the streamflow depletion for that month (in acre-ft/month).
+///
+/// The vector only includes months when the depletion is greater than 0.001 acre-ft/month.
+/// The calculation stops if a negative depletion value is encountered, indicating complete aquifer depletion.
+pub fn combined_urf_results(
+    values: HashMap<i32, HashMap<NaiveDate, f64>>,
+) -> Vec<(NaiveDate, f64)> {
+    // Aggregate f64 values by NaiveDate
+    let mut date_sums: HashMap<NaiveDate, f64> = HashMap::new();
+
+    // Iterate over all inner HashMaps
+    for inner_map in values.values() {
+        for (date, value) in inner_map {
+            // Sum values for each date
+            *date_sums.entry(*date).or_insert(0.0) += value;
+        }
+    }
+
+    // Convert to Vec and sort by date
+    let mut result: Vec<(NaiveDate, f64)> = date_sums.into_iter().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
