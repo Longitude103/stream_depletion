@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use crate::utils::add_months;
 use chrono::{Datelike, NaiveDate};
 use scirs2_special::erfc;
-use crate::add_months;
+use std::collections::HashMap;
 
 /// Calculates streamflow depletion for an alluvial aquifer based on monthly pumping volumes.
 ///
@@ -28,7 +28,7 @@ use crate::add_months;
 /// The vector only includes months when the depletion is greater than 0.001 acre-ft/month.
 /// The calculation stops if a negative depletion value is encountered, indicating complete aquifer depletion.
 pub fn calculate_streamflow_depletion_alluvial(
-    pumping_volumes_monthly: &HashMap<NaiveDate, f64>,  // Monthly pumping volumes in acre-ft / month
+    pumping_volumes_monthly: &HashMap<NaiveDate, f64>, // Monthly pumping volumes in acre-ft / month
     distance_to_well: f64,
     distance_to_boundary: f64,
     specific_yield: f64,
@@ -41,104 +41,98 @@ pub fn calculate_streamflow_depletion_alluvial(
     // 1. calculate the depletion fraction for each time step
     let mut base_depletion_fraction = vec![0.0; total_days];
     for m in 0..total_days {
-        base_depletion_fraction[m] = calculate_depletion_fraction_alluvial_aquifer(distance_to_well, distance_to_boundary, specific_yield, transmissivity, m as f64);
+        base_depletion_fraction[m] = calculate_depletion_fraction_alluvial_aquifer(
+            distance_to_well,
+            distance_to_boundary,
+            specific_yield,
+            transmissivity,
+            m as f64,
+        );
     }
 
-    // println!("Base Depletion Fraction");
-    // for step in 0..120 {
-    //     println!("{}: {}", step, base_depletion_fraction[step]);
-    // }
-
-    // total up base_depletion_fraction
-    // let mut total_base_depletion_fraction = 0.0;
-    // for step in 0..total_days {
-    //     total_base_depletion_fraction += base_depletion_fraction[step];
-    // }
-    //
-    // println!("Total Base Depletion Fraction: {}", total_base_depletion_fraction);
-
-    // 2. convert pumping_volumes_monthly to pumping_rates_daily using the number of days in the month of the NaiveDate
-    let mut pumping_rates_daily = HashMap::new();
-    for (date, pumping_volume) in pumping_volumes_monthly {
-        let days_in_month = date.num_days_in_month();
-
-        // for each day in the month, calculate the daily pumping rate, and store it in pumping_rates_daily by NaiveDate and amount
-        for d in 0..days_in_month {
-            let date_daily = NaiveDate::from_ymd_opt(date.year(), date.month(), (d + 1u8) as u32).unwrap();
-            let daily_pumping_rate = pumping_volume * 43_560f64 / (days_in_month as f64);
-            *pumping_rates_daily.entry(date_daily).or_insert(0.0) += daily_pumping_rate;
-        }
-    }
-
-    // println!("{:?}", pumping_rates_daily);  // order is not sorted
-    // println!("Daily pumping rates");
-    // let start_date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
-    // for day in 0..35 {
-    //     let pump_date = start_date + chrono::Duration::days(day as i64);  // depletion is always the day after the pumping occurs
-    //     println!("{}: {}", pump_date, pumping_rates_daily.get(&pump_date).unwrap_or(&0.0));
-    // }
+    let pumping_rates_daily = monthly_pumping_to_daily(pumping_volumes_monthly);
 
     // 3. Create a daily results Hashmap with daily time steps to hold the daily depletion amounts
     let mut daily_depletion_amount = HashMap::new();
-
     for (date, pumping_rate) in pumping_rates_daily {
         if pumping_rate <= 0.0 {
             continue;
         }
         let mut day_depletion = vec![0.0; total_days];
         for base_depletion_index in 0..base_depletion_fraction.len() {
-            day_depletion[base_depletion_index] = pumping_rate * base_depletion_fraction[base_depletion_index];
+            day_depletion[base_depletion_index] =
+                pumping_rate * base_depletion_fraction[base_depletion_index];
         }
 
         // add the day depletion to the daily depletion amount for the corresponding date and forward
         for depletion_index in 0..day_depletion.len() {
-            let depletion_date = date + chrono::Duration::days(depletion_index as i64 + 1i64);  // depletion is always the day after the pumping occurs
+            let depletion_date = date + chrono::Duration::days(depletion_index as i64 + 1i64); // depletion is always the day after the pumping occurs
             if depletion_index == 0 {
-                *daily_depletion_amount.entry(depletion_date).or_insert(0.0) += day_depletion[depletion_index];
+                *daily_depletion_amount.entry(depletion_date).or_insert(0.0) +=
+                    day_depletion[depletion_index];
                 continue;
             }
 
-            *daily_depletion_amount.entry(depletion_date).or_insert(0.0) += day_depletion[depletion_index] - day_depletion[depletion_index - 1];
+            *daily_depletion_amount.entry(depletion_date).or_insert(0.0) +=
+                day_depletion[depletion_index] - day_depletion[depletion_index - 1];
         }
     }
 
-    // println!("Daily depletion amounts");
-    // let start_date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
-    // for day in 0..35 {
-    //     let depletion_date = start_date + chrono::Duration::days(day as i64);  // depletion is always the day after the pumping occurs
-    //     println!("{}: {}", depletion_date, daily_depletion_amount.get(&depletion_date).unwrap_or(&0.0));
-    // }
-
-    // println!("{:?}", daily_depletion_amount);  // order is not sorted, this is ft³/day
-
     // 4. sum the daily depletion amounts to monthly depletion totals and convert to acre-ft / month from ft³/month
+    let monthly_depletion_amount = create_monthly_depletion(&daily_depletion_amount);
+    let results = create_results_vector(
+        pumping_volumes_monthly,
+        total_months,
+        &monthly_depletion_amount,
+    );
+
+    results
+}
+
+pub(crate) fn create_monthly_depletion(
+    daily_depletion_amount: &HashMap<NaiveDate, f64>,
+) -> HashMap<NaiveDate, f64> {
     let mut monthly_depletion_amount = HashMap::new();
     for (date, depletion_amount) in daily_depletion_amount {
-        let monthly_date = NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap();  // Monthly date
-        *monthly_depletion_amount.entry(monthly_date).or_insert(0.0) += depletion_amount / 43560f64;  // Convert ft³ to acre-ft
+        let monthly_date = NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap(); // Monthly date
+        *monthly_depletion_amount.entry(monthly_date).or_insert(0.0) += depletion_amount / 43560f64; // Convert ft³ to acre-ft
     }
+    monthly_depletion_amount
+}
 
-    // println!("{:?}", monthly_depletion_amount);  // order is sorted
-
-    // println!("Monthly depletion amounts");
-    // let start_date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
-    // for month in 0..60 {
-    //     let result_date = add_months(start_date, month).unwrap();  // depletion is always the day after the pumping occurs
-    //     println!("{}: {}", result_date, monthly_depletion_amount.get(&result_date).unwrap_or(&0.0));
-    // }
-    //
-    // // 5. sum the monthly depletion amounts to get the total depletion
-    // let total_depletion = monthly_depletion_amount.values().sum::<f64>();
-    //
-    // println!("Total depletion: {}", total_depletion);
-
+/// Creates a vector of monthly streamflow depletion results.
+///
+/// This function processes monthly depletion amounts and generates a vector of results,
+/// filtering out insignificant depletion values and handling complete aquifer depletion.
+///
+/// # Parameters
+///
+/// * `pumping_volumes_monthly`: A reference to a HashMap containing monthly pumping volumes,
+///   with NaiveDate keys and f64 values representing pumping volumes.
+/// * `total_months`: The total number of months to process.
+/// * `monthly_depletion_amount`: A mutable reference to a HashMap containing calculated monthly
+///   depletion amounts, with NaiveDate keys and f64 values representing depletion volumes.
+///
+/// # Returns
+///
+/// A Vec of tuples, where each tuple contains:
+/// * A NaiveDate representing the start of a month.
+/// * An f64 value representing the streamflow depletion for that month.
+///
+/// The vector only includes months when the depletion is greater than 0.001 units.
+/// The calculation stops if a negative depletion value is encountered, indicating complete aquifer depletion.
+pub(crate) fn create_results_vector(
+    pumping_volumes_monthly: &HashMap<NaiveDate, f64>,
+    total_months: usize,
+    monthly_depletion_amount: &HashMap<NaiveDate, f64>,
+) -> Vec<(NaiveDate, f64)> {
     let mut results: Vec<(NaiveDate, f64)> = vec![];
     // start date should be the oldest date key in the pumping_volumes_monthly HashMap
     let start_date = pumping_volumes_monthly.keys().min().unwrap().clone();
-    results.reserve(total_months);  // Reserve space for results to avoid reallocating
+    results.reserve(total_months); // Reserve space for results to avoid reallocating
     // let start_date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();  // should get from the input parameters
     for month in 0..total_months {
-        let result_date = add_months(start_date, month as i32).unwrap();  // depletion is always the day after the pumping occurs
+        let result_date = add_months(start_date, month as i32).unwrap(); // depletion is always the day after the pumping occurs
         let monthly_depletion = *monthly_depletion_amount.get(&result_date).unwrap_or(&0.0);
 
         if monthly_depletion < 0.0 {
@@ -151,10 +145,47 @@ pub fn calculate_streamflow_depletion_alluvial(
             results.push((result_date, monthly_depletion));
         }
     }
-
     results
 }
 
+/// Converts monthly pumping volumes to daily pumping rates.
+///
+/// This function takes a HashMap of monthly pumping volumes and converts them into
+/// daily pumping rates, distributing the monthly volume evenly across each day of the month.
+///
+/// # Parameters
+///
+/// * `pumping_volumes_monthly`: A reference to a HashMap where the keys are `NaiveDate`s
+///   representing the start of each month, and the values are `f64`s representing the
+///   pumping volume for that month in acre-feet.
+///
+/// # Returns
+///
+/// A new HashMap where the keys are `NaiveDate`s representing each day, and the values
+/// are `f64`s representing the daily pumping rate in cubic feet per day.
+///
+/// # Note
+///
+/// The function assumes that the input volumes are in acre-feet and converts them to
+/// cubic feet per day in the output.
+pub(crate) fn monthly_pumping_to_daily(
+    pumping_volumes_monthly: &HashMap<NaiveDate, f64>,
+) -> HashMap<NaiveDate, f64> {
+    // 2. convert pumping_volumes_monthly to pumping_rates_daily using the number of days in the month of the NaiveDate
+    let mut pumping_rates_daily = HashMap::new();
+    for (date, pumping_volume) in pumping_volumes_monthly {
+        let days_in_month = date.num_days_in_month();
+
+        // for each day in the month, calculate the daily pumping rate, and store it in pumping_rates_daily by NaiveDate and amount
+        for d in 0..days_in_month {
+            let date_daily =
+                NaiveDate::from_ymd_opt(date.year(), date.month(), (d + 1u8) as u32).unwrap();
+            let daily_pumping_rate = pumping_volume * 43_560f64 / (days_in_month as f64);
+            *pumping_rates_daily.entry(date_daily).or_insert(0.0) += daily_pumping_rate;
+        }
+    }
+    pumping_rates_daily
+}
 
 /// Calculates the depletion fraction for streamflow depletion in an alluvial aquifer.
 ///
@@ -175,11 +206,16 @@ pub fn calculate_streamflow_depletion_alluvial(
 ///
 /// Returns the depletion fraction as a `f64`, representing the proportion of pumping
 /// that has been captured from the stream at the given time in an alluvial aquifer setting.
-fn calculate_depletion_fraction_alluvial_aquifer(distance_to_well: f64, distance_to_boundary: f64,
-                                                 specific_yield: f64, transmissivity: f64, time: f64) -> f64 {
+fn calculate_depletion_fraction_alluvial_aquifer(
+    distance_to_well: f64,
+    distance_to_boundary: f64,
+    specific_yield: f64,
+    transmissivity: f64,
+    time: f64,
+) -> f64 {
     let mut total_depletion_fraction = 0.0;
     let mut image_factor = 1.0;
-    let mut well_distance = -distance_to_well;  // distance is negative to account for first loop
+    let mut well_distance = -distance_to_well; // distance is negative to account for first loop
 
     loop {
         // Real well or positive image well
@@ -206,4 +242,39 @@ fn calculate_depletion_fraction_alluvial_aquifer(distance_to_well: f64, distance
     }
 
     total_depletion_fraction
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_with_alluvial_aquifer() {
+        // Aquifer parameters (in feet-based units)
+        let d: f64 = 4000.0; // Distance to stream (ft)
+        let b: f64 = 8000.0; // Distance from well to boundary (ft)
+        let s: f64 = 0.2; // Storativity (dimensionless)
+        let t: f64 = 261_800.0; // Transmissivity (GPD/ft)
+
+        // Pumping rates in acre-feet/month for month 1
+        let mut pumping_volumes = HashMap::new();
+        pumping_volumes.insert(NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(), 100.0); // acre-feet for month 1
+        let days_per_month = 30.42; // Average days per month
+        let total_months = 120; // 10 years
+
+        let converted_t = t / 7.481; // Convert GPD to ft2/day
+        let value = calculate_streamflow_depletion_alluvial(
+            &pumping_volumes,
+            d,
+            b,
+            s,
+            converted_t,
+            days_per_month,
+            total_months,
+        );
+        println!("Monthly depletion amounts");
+        for month in 0..value.len() {
+            println!("{}: {}", value[month].0, value[month].1);
+        }
+    }
 }

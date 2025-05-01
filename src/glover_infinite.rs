@@ -1,26 +1,69 @@
+use crate::glover_alluvial::{
+    create_monthly_depletion, create_results_vector, monthly_pumping_to_daily,
+};
+use chrono::NaiveDate;
 use scirs2_special::erfc;
+use std::collections::HashMap;
 
-pub fn calculate_streamflow_depletion_infinate(
-    pumping_rates: &[f64],
-    d: f64,
-    s: f64,
-    t: f64,
-    time: f64,
+pub fn calculate_streamflow_depletion_infinite(
+    pumping_volumes_monthly: &HashMap<NaiveDate, f64>, // Monthly pumping volumes in acre-ft / month
+    distance_to_well: f64,
+    specific_yield: f64,
+    transmissivity: f64,
     days_per_month: f64,
-) -> f64 {
-    let mut qs_total = 0.0;
-    // Sum depletion contributions from each rate change
-    for i in 1..pumping_rates.len() {
-        let delta_q = pumping_rates[i] - pumping_rates[i - 1]; // Rate change
-        let start_time = (i - 1) as f64 * days_per_month; // Start of month i
-        if time > start_time {
-            let qs = delta_q * calculate_depletion_fraction(d, s, t, time - start_time);
-            qs_total += qs;
+    total_months: usize,
+) -> Vec<(NaiveDate, f64)> {
+    // get total days
+    let total_days = (total_months as f64 * days_per_month).ceil() as usize;
+
+    // 1. calculate the depletion fraction for each time step
+    let mut base_depletion_fraction = vec![0.0; total_days];
+    for m in 0..total_days {
+        base_depletion_fraction[m] = calculate_depletion_fraction(
+            distance_to_well,
+            specific_yield,
+            transmissivity,
+            m as f64,
+        );
+    }
+
+    let pumping_rates_daily = monthly_pumping_to_daily(pumping_volumes_monthly);
+
+    // 3. Create a daily results Hashmap with daily time steps to hold the daily depletion amounts
+    let mut daily_depletion_amount = HashMap::new();
+    for (date, pumping_rate) in pumping_rates_daily {
+        if pumping_rate <= 0.0 {
+            continue;
+        }
+        let mut day_depletion = vec![0.0; total_days];
+        for base_depletion_index in 0..base_depletion_fraction.len() {
+            day_depletion[base_depletion_index] =
+                pumping_rate * base_depletion_fraction[base_depletion_index];
+        }
+
+        // add the day depletion to the daily depletion amount for the corresponding date and forward
+        for depletion_index in 0..day_depletion.len() {
+            let depletion_date = date + chrono::Duration::days(depletion_index as i64 + 1i64); // depletion is always the day after the pumping occurs
+            if depletion_index == 0 {
+                *daily_depletion_amount.entry(depletion_date).or_insert(0.0) +=
+                    day_depletion[depletion_index];
+                continue;
+            }
+
+            *daily_depletion_amount.entry(depletion_date).or_insert(0.0) +=
+                day_depletion[depletion_index] - day_depletion[depletion_index - 1];
         }
     }
-    qs_total.max(0.0) // Ensure depletion is non-negative
-}
 
+    let monthly_depletion_amount = create_monthly_depletion(&daily_depletion_amount);
+    let results = create_results_vector(
+        pumping_volumes_monthly,
+        total_months,
+        &monthly_depletion_amount,
+    );
+
+    results
+}
 
 /// Calculates the depletion fraction for streamflow depletion using the Glover solution.
 ///
@@ -43,4 +86,37 @@ fn calculate_depletion_fraction(d: f64, s: f64, t: f64, time: f64) -> f64 {
     let z = ((s * d.powi(2)) / (4.0 * t * time)).sqrt();
     // Calculate erfc(z)
     erfc(z)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_with_infinite_aquifer() {
+        // Aquifer parameters (in feet-based units)
+        let d: f64 = 4000.0; // Distance to stream (ft)
+        let s: f64 = 0.2; // Storativity (dimensionless)
+        let t: f64 = 261_800.0; // Transmissivity (GPD/ft)
+
+        // Pumping rates in acre-feet/month for month 1
+        let mut pumping_volumes = HashMap::new();
+        pumping_volumes.insert(NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(), 100.0); // acre-feet for month 1
+        let days_per_month = 30.42; // Average days per month
+        let total_months = 120; // 10 years
+
+        let converted_t = t / 7.481; // Convert GPD to ft2/day
+        let value = calculate_streamflow_depletion_infinite(
+            &pumping_volumes,
+            d,
+            s,
+            converted_t,
+            days_per_month,
+            total_months,
+        );
+        println!("Monthly depletion amounts");
+        for month in 0..value.len() {
+            println!("{}: {}", value[month].0, value[month].1);
+        }
+    }
 }
