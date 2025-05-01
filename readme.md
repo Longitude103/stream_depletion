@@ -48,9 +48,10 @@ The Glover equation (Glover and Balmer, 1954) estimates streamflow depletion due
 Standard Glover Equation
 For an infinite aquifer, the streamflow depletion \( Q_s(t) \) is calculated as:
 
-\[
+$$
 Q_s(t) = Q_w \cdot \text{erfc}\left( \sqrt{\frac{S d^2}{4 T t}} \right)
-\]
+$$
+
 Where:
 
 \( Q_s(t) \): Streamflow depletion rate (L³/T)
@@ -64,9 +65,9 @@ Where:
 ### Modification for Alluvial Boundaries
 In alluvial aquifers bounded by impermeable features (e.g., valley walls), an image well is placed to simulate the boundary. For a single impermeable boundary at distance ( W ) from the well, perpendicular to the stream, the modified equation is:
 
-\[
+$$
 Q_s(t) = Q_w \cdot \left[ \text{erfc}\left( \sqrt{\frac{S d^2}{4 T t}} \right) + \text{erfc}\left( \sqrt{\frac{S (2W - d)^2}{4 T t}} \right) \right]
-\]
+$$
 
 Where:
 
@@ -102,7 +103,7 @@ Requires accurate aquifer parameters (( T ), ( S ), ( d ), ( W )).
 The Jenkins Stream Depletion Factor (SDF) method, introduced by Charles T. Jenkins in 1968, simplifies the calculation of streamflow depletion caused by groundwater pumping in alluvial aquifers. It builds on the Glover equation (1954) by introducing the SDF, a time parameter that quantifies the rate of depletion, making it easier to estimate impacts on streams for water management.
 Stream Depletion Factor (SDF). The SDF is defined as:
 
-\[ \text{sdf} = \frac{d^2 S}{T} \]
+$$ \text{sdf} = \frac{d^2 S}{T} $$
 
 Where:
 
@@ -115,7 +116,7 @@ The SDF (units: time) indicates how quickly pumping affects the stream. A lower 
 ### Depletion Equation
 Using the SDF, the streamflow depletion ( Q_s(t) ) is calculated as:
 
-\[ Q_s(t) = Q_w \cdot \text{erfc}\left( \sqrt{\frac{\text{sdf}}{4 t}} \right) \]
+$$ Q_s(t) = Q_w \cdot \text{erfc}\left( \sqrt{\frac{\text{sdf}}{4 t}} \right) $$
 
 Where:
 
@@ -159,11 +160,11 @@ References
 You are welcome contributions to stream_depletion Library! Whether you're fixing bugs, adding features, improving documentation, or reporting issues, your help is greatly appreciated. This guide outlines how to contribute to the project.
 
 ### Getting Started
-1. **Fork the Repository**: Click the "Fork" button on the [repository page](https://github.com/your-username/your-library) to create your own copy.
+1. **Fork the Repository**: Click the "Fork" button on the [repository page](https://github.com/Longitude103/stream_depletion) to create your own copy.
 2. **Clone Your Fork**:
    ```bash
-   git clone https://github.com/your-username/your-library.git
-   cd your-library
+   git clone https://github.com/Longitude103/stream_depletion.git
+   cd stream_depletion
    ```
 3. **Set Up the Environment**:
     - Ensure you have [Rust](https://www.rust-lang.org/tools/install) installed (`rustup` recommended).
@@ -172,7 +173,7 @@ You are welcome contributions to stream_depletion Library! Whether you're fixing
 
 ### How to Contribute
 #### Reporting Issues
-- Check the [issue tracker](https://github.com/your-username/your-library/issues) to avoid duplicates.
+- Check the [issue tracker](https://github.com/Longitude103/stream_depletion/issues) to avoid duplicates.
 - Open a new issue with a clear title, description, and steps to reproduce (if applicable).
 - Use provided templates for bug reports or feature requests.
 
@@ -222,37 +223,10 @@ You are welcome contributions to stream_depletion Library! Whether you're fixing
 
 ### Contact
 For questions or guidance, reach out via:
-- [GitHub Issues](https://github.com/your-username/your-library/issues)
-- [Discord/Slack/Email] (replace with project-specific channels if applicable)
+- [GitHub Issues](https://github.com/Longitude103/stream_depletion/issues)
 
 Thank you for contributing to stream_depletion!
 
 # License
 
 stream_depletion is licensed under the MIT License, a permissive open-source license that allows you to use, modify, and distribute the software freely, provided that the license notice is included with all copies or substantial portions of the software.
-
-## MIT License
-
-```text
-MIT License
-
-Copyright (c) 2025 Longitude 103
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
