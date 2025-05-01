@@ -89,6 +89,21 @@ pub fn calculate_streamflow_depletion_alluvial(
     results
 }
 
+/// Aggregates daily depletion amounts into monthly totals and converts units.
+///
+/// This function takes daily streamflow depletion amounts and aggregates them into
+/// monthly totals. It also converts the units from cubic feet to acre-feet.
+///
+/// # Parameters
+///
+/// * `daily_depletion_amount`: A reference to a HashMap where keys are NaiveDates
+///   representing each day, and values are f64 representing the daily depletion
+///   amount in cubic feet.
+///
+/// # Returns
+///
+/// A new HashMap where keys are NaiveDates representing the first day of each month,
+/// and values are f64 representing the total monthly depletion amount in acre-feet.
 pub(crate) fn create_monthly_depletion(
     daily_depletion_amount: &HashMap<NaiveDate, f64>,
 ) -> HashMap<NaiveDate, f64> {
@@ -248,6 +263,11 @@ fn calculate_depletion_fraction_alluvial_aquifer(
 mod tests {
     use super::*;
 
+    // Helper function to round a float to 5 decimal places
+    fn round_to_5_decimals(value: f64) -> f64 {
+        (value * 100_000.0).round() / 100_000.0
+    }
+
     #[test]
     fn test_with_alluvial_aquifer() {
         // Aquifer parameters (in feet-based units)
@@ -272,9 +292,27 @@ mod tests {
             days_per_month,
             total_months,
         );
-        println!("Monthly depletion amounts");
-        for month in 0..value.len() {
-            println!("{}: {}", value[month].0, value[month].1);
-        }
+        // println!("Monthly depletion amounts");
+        // for month in 0..value.len() {
+        //     println!("{}: {}", value[month].0, value[month].1);
+        // }
+        
+        assert!(value.len() <= total_months); // Test if results vector has correct length
+
+        let tolerance = 0.00001; // 10^-5 for 5 decimal places
+        
+        // values that should be checked are:
+        // 2025-01-01: 8.171540778208811
+        // 2025-02-01: 21.22159873127743
+        // 2025-03-01: 15.074947158458004
+        // 2025-04-01: 10.443598565471724
+        // 2025-05-01: 8.553145318948223
+        // 2025-06-01: 6.699132590605728
+        assert!((round_to_5_decimals(value[0].1) - 8.17154).abs() < tolerance);
+        assert!((round_to_5_decimals(value[1].1) - 21.22159).abs() < tolerance);
+        assert!((round_to_5_decimals(value[2].1) - 15.07494).abs() < tolerance);
+        assert!((round_to_5_decimals(value[3].1) - 10.44359).abs() < tolerance);
+        assert!((round_to_5_decimals(value[4].1) - 8.55314).abs() < tolerance);
+        assert!((round_to_5_decimals(value[5].1) - 6.69913).abs() < tolerance);
     }
 }

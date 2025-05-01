@@ -5,6 +5,26 @@ use chrono::NaiveDate;
 use scirs2_special::erfc;
 use std::collections::HashMap;
 
+/// Calculates streamflow depletion using the Stream Depletion Factor (SDF) method.
+///
+/// This function computes the monthly streamflow depletion based on given monthly pumping volumes,
+/// SDF value, and time parameters. It uses the SDF method to estimate the impact of groundwater
+/// pumping on streamflow over time.
+///
+/// # Parameters
+///
+/// * `pumping_volumes_monthly`: A HashMap containing monthly pumping volumes in acre-feet per month,
+///   with NaiveDate keys representing the start of each month.
+/// * `sdf`: The Stream Depletion Factor in days, representing the time it takes for stream depletion
+///   to reach about 28% of the pumping rate.
+/// * `days_per_month`: The average number of days per month used in calculations.
+/// * `total_months`: The total number of months for which to calculate depletion.
+///
+/// # Returns
+///
+/// A Vec of tuples, where each tuple contains:
+/// * A NaiveDate representing the start of a month
+/// * A f64 value representing the calculated streamflow depletion for that month in acre-feet
 pub fn calculate_streamflow_depletion_sdf(
     pumping_volumes_monthly: &HashMap<NaiveDate, f64>, // Monthly pumping volumes in acre-ft / month
     sdf: u32,
@@ -69,6 +89,21 @@ pub fn calculate_streamflow_depletion_sdf(
     results
 }
 
+/// Calculates the depletion fraction using the Stream Depletion Factor (SDF) method.
+///
+/// This function computes the fraction of pumping that has been depleted from the stream
+/// at a given time step, based on the SDF value.
+///
+/// # Parameters
+///
+/// * `sdf`: The Stream Depletion Factor in days, representing the time it takes for stream
+///   depletion to reach about 28% of the pumping rate.
+/// * `time_step`: The current time step (in days) for which the depletion fraction is being calculated.
+///
+/// # Returns
+///
+/// A `f64` value representing the calculated depletion fraction at the given time step.
+/// This value ranges from 0 to 1, where 0 means no depletion and 1 means complete depletion.
 fn calculate_depletion_fraction_sdf(sdf: u32, time_step: usize) -> f64 {
     let u = (sdf as f64 / (4.0 * time_step as f64)).sqrt(); // u factor
     erfc(u)
@@ -77,6 +112,12 @@ fn calculate_depletion_fraction_sdf(sdf: u32, time_step: usize) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    // Helper function to round a float to 5 decimal places
+    fn round_to_5_decimals(value: f64) -> f64 {
+        (value * 100_000.0).round() / 100_000.0
+    }
 
     #[test]
     fn test_with_sdf() {
@@ -91,9 +132,27 @@ mod tests {
 
         let value =
             calculate_streamflow_depletion_sdf(&pumping_volumes, sdf, days_per_month, total_months);
-        println!("Monthly depletion amounts");
-        for month in 0..value.len() {
-            println!("{}: {}", value[month].0, value[month].1);
-        }
+        // println!("Monthly depletion amounts");
+        // for month in 0..value.len() {
+        //     println!("{}: {}", value[month].0, value[month].1);
+        // }
+        
+        assert!(value.len() <= total_months as usize); // Test if results vector has correct length
+
+        let tolerance = 0.00001; // 10^-5 for 5 decimal places
+
+        // values that should be checked are:
+        // 2025-01-01: 0.7680351810235876
+        // 2025-02-01: 6.842148015576688
+        // 2025-03-01: 10.08458908541661
+        // 2025-04-01: 7.8994824450947645
+        // 2025-05-01: 6.35488902954355
+        // 2025-06-01: 4.885147733308235
+        assert!((round_to_5_decimals(value[0].1) - 0.76803).abs() < tolerance);
+        assert!((round_to_5_decimals(value[1].1) - 6.84215).abs() < tolerance);
+        assert!((round_to_5_decimals(value[2].1) - 10.08459).abs() < tolerance);
+        assert!((round_to_5_decimals(value[3].1) - 7.89948).abs() < tolerance);
+        assert!((round_to_5_decimals(value[4].1) - 6.35489).abs() < tolerance);
+        assert!((round_to_5_decimals(value[5].1) - 4.88515).abs() < tolerance);
     }
 }

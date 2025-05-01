@@ -25,3 +25,30 @@ pub(crate) fn add_months(date: NaiveDate, months: i32) -> Option<NaiveDate> {
     }
     NaiveDate::from_ymd_opt(year, month as u32, date.day())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_one_month_to_standard_date() {
+        let start_date = NaiveDate::from_ymd_opt(2023, 5, 15).unwrap();
+        let expected_date = NaiveDate::from_ymd_opt(2023, 6, 15).unwrap();
+        let result = add_months(start_date, 1);
+        assert_eq!(result, Some(expected_date));
+    }
+
+    #[test]
+    fn test_add_months_year_rollover() {
+        let start_date = NaiveDate::from_ymd_opt(2023, 12, 15).unwrap();
+        let result = add_months(start_date, 3);
+        assert_eq!(result, Some(NaiveDate::from_ymd_opt(2024, 3, 15).unwrap()));
+    }
+
+    #[test]
+    fn test_add_months_invalid_date() {
+        let start_date = NaiveDate::from_ymd_opt(2023, 1, 31).unwrap();
+        let result = add_months(start_date, 1);
+        assert_eq!(result, None);
+    }
+}

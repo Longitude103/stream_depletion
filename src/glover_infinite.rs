@@ -5,6 +5,23 @@ use chrono::NaiveDate;
 use scirs2_special::erfc;
 use std::collections::HashMap;
 
+/// Calculates streamflow depletion for an infinite aquifer using the Glover solution.
+///
+/// This function computes the monthly streamflow depletion based on given pumping volumes and aquifer parameters.
+/// It uses the Glover solution for an infinite aquifer to determine the depletion fractions and applies them to the pumping rates.
+///
+/// # Parameters
+///
+/// * `pumping_volumes_monthly`: A HashMap containing monthly pumping volumes in acre-ft/month, keyed by date.
+/// * `distance_to_well`: The distance from the well to the stream in feet.
+/// * `specific_yield`: The specific yield of the aquifer (dimensionless).
+/// * `transmissivity`: The transmissivity of the aquifer in ft²/day.
+/// * `days_per_month`: The average number of days per month used in calculations.
+/// * `total_months`: The total number of months to calculate depletion for.
+///
+/// # Returns
+///
+/// A Vec of tuples, where each tuple contains a date and the corresponding monthly streamflow depletion in acre-ft/month.
 pub fn calculate_streamflow_depletion_infinite(
     pumping_volumes_monthly: &HashMap<NaiveDate, f64>, // Monthly pumping volumes in acre-ft / month
     distance_to_well: f64,
@@ -92,6 +109,11 @@ fn calculate_depletion_fraction(d: f64, s: f64, t: f64, time: f64) -> f64 {
 mod tests {
     use super::*;
 
+    // Helper function to round a float to 5 decimal places
+    fn round_to_5_decimals(value: f64) -> f64 {
+        (value * 100_000.0).round() / 100_000.0
+    }
+
     #[test]
     fn test_with_infinite_aquifer() {
         // Aquifer parameters (in feet-based units)
@@ -114,9 +136,27 @@ mod tests {
             days_per_month,
             total_months,
         );
-        println!("Monthly depletion amounts");
-        for month in 0..value.len() {
-            println!("{}: {}", value[month].0, value[month].1);
-        }
+        // println!("Monthly depletion amounts");
+        // for month in 0..value.len() {
+        //     println!("{}: {}", value[month].0, value[month].1);
+        // }
+
+        assert!(value.len() <= total_months); // Test if results vector has correct length
+
+        let tolerance = 0.00001; // 10^-5 for 5 decimal places
+        
+        // values that should be checked are:
+        // 2025-01-01: 8.169915278703847
+        // 2025-02-01: 20.979264088137487
+        // 2025-03-01: 13.514164851251204
+        // 2025-04-01: 7.75855587035028
+        // 2025-05-01: 5.433551969020377
+        // 2025-06-01: 3.857354439468754
+        assert!((round_to_5_decimals(value[0].1) - 8.16991).abs() < tolerance);
+        assert!((round_to_5_decimals(value[1].1) - 20.97926).abs() < tolerance);
+        assert!((round_to_5_decimals(value[2].1) - 13.51416).abs() < tolerance);
+        assert!((round_to_5_decimals(value[3].1) - 7.75856).abs() < tolerance);
+        assert!((round_to_5_decimals(value[4].1) - 5.43355).abs() < tolerance);
+        assert!((round_to_5_decimals(value[5].1) - 3.85735).abs() < tolerance);
     }
 }
