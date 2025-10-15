@@ -16,7 +16,7 @@ use chrono::{Datelike, NaiveDate};
 /// Returns an `Option<NaiveDate>`:
 /// * `Some(NaiveDate)` if the resulting date is valid.
 /// * `None` if the resulting date is invalid (e.g., February 30th).
-pub(crate) fn add_months(date: NaiveDate, months: i32) -> Option<NaiveDate> {
+pub fn add_months(date: NaiveDate, months: i32) -> Option<NaiveDate> {
     let mut year = date.year() + (date.month() as i32 + months - 1) / 12;
     let mut month = (date.month() as i32 + months - 1) % 12 + 1;
     if month <= 0 {
