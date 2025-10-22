@@ -11,6 +11,16 @@ pub struct UrfValue {
     pub urf_val: f64,
 }
 
+impl UrfValue {
+    pub fn new(month: i32, reach: i32, urf_val: f64) -> Self {
+        UrfValue {
+            month,
+            reach,
+            urf_val,
+        }
+    }
+}
+
 /// Computes the lagged usage rate factor (URF) for different reaches over time.
 ///
 /// This function takes a vector of `UrfValue` and a usage map, and calculates the lagged URF
