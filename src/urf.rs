@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Add;
 
+pub type LaggedUrfByDate = HashMap<NaiveDate, f64>;
+pub type LaggedUrfResult = HashMap<i32, LaggedUrfByDate>;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UrfValue {
     pub month: i32,
@@ -36,12 +39,9 @@ impl UrfValue {
 ///
 /// # Returns
 ///
-/// A `HashMap` where the keys are reach identifiers (`i32`), and the values are another `HashMap` with
-/// `NaiveDate` keys and `f64` values representing the lagged URF for each date.
-pub fn urf_lagging(
-    usage: &HashMap<NaiveDate, f64>,
-    urf: Vec<UrfValue>,
-) -> HashMap<i32, HashMap<NaiveDate, f64>> {
+/// A [`LaggedUrfResult`] where the keys are reach identifiers (`i32`), and the values are `LaggedUrfByDate`
+/// maps with `NaiveDate` keys and `f64` values representing the lagged URF for each date.
+pub fn urf_lagging(usage: &HashMap<NaiveDate, f64>, urf: Vec<UrfValue>) -> LaggedUrfResult {
     let reaches = urf.iter().map(|u| u.reach).unique().collect::<Vec<_>>();
     let usage_dates: Vec<&NaiveDate> = usage.keys().into_iter().sorted().collect();
 
@@ -78,8 +78,7 @@ pub fn urf_lagging(
 ///
 /// # Parameters
 ///
-/// - `values`: A `HashMap` where the keys are reach identifiers (`i32`), and the values are another `HashMap` with
-/// `NaiveDate` keys and `f64` values representing the lagged URF for each date.
+/// - `values`: A [`LaggedUrfResult`] containing the lagged URF results for each reach.
 ///
 /// # Returns
 ///
@@ -89,9 +88,7 @@ pub fn urf_lagging(
 ///
 /// The vector only includes months when the depletion is greater than 0.001 acre-ft/month.
 /// The calculation stops if a negative depletion value is encountered, indicating complete aquifer depletion.
-pub fn combined_urf_results(
-    values: HashMap<i32, HashMap<NaiveDate, f64>>,
-) -> Vec<(NaiveDate, f64)> {
+pub fn combined_urf_results(values: LaggedUrfResult) -> Vec<(NaiveDate, f64)> {
     // Aggregate f64 values by NaiveDate
     let mut date_sums: HashMap<NaiveDate, f64> = HashMap::new();
 
