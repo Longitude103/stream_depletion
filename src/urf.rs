@@ -7,7 +7,7 @@ use std::ops::Add;
 pub type LaggedUrfByDate = HashMap<NaiveDate, f64>;
 pub type LaggedUrfResult = HashMap<i32, LaggedUrfByDate>;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UrfValue {
     pub month: i32,
     pub reach: i32,
