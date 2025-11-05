@@ -7,7 +7,7 @@ use std::ops::Add;
 pub type LaggedUrfByDate = HashMap<NaiveDate, f64>;
 pub type LaggedUrfResult = HashMap<i32, LaggedUrfByDate>;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct UrfValue {
     pub month: i32,
     pub reach: i32,
@@ -26,7 +26,7 @@ impl UrfValue {
 
 /// Computes the lagged usage rate factor (URF) for different reaches over time.
 ///
-/// This function takes a vector of `UrfValue` and a usage map, and calculates the lagged URF
+/// This function takes a vector of `UrfValue` and a usage map and calculates the lagged URF
 /// for each reach over the given usage dates. The result is a nested `HashMap` where the outer
 /// key is the reach identifier, and the inner key-value pairs represent the date and the corresponding
 /// lagged URF value.
