@@ -129,9 +129,9 @@ dense-table tests still pass.
   `erfc(u)` or `4 i²erfc(u)` into `UrfValue` unless you have converted
   them to *incremental volume fractions of a rectangular monthly pulse*.
 - **Do not interpolate a monthly URF onto daily pumping** unless you
-  deliberately call [`disaggregate_monthly_urf_uniform`] and accept the
+  deliberately call `disaggregate_monthly_urf_uniform` and accept the
   equal-day-in-month assumption. A plan that has a native daily URF
-  should pass that series to [`urf_lagging_daily`] with **daily** volumes.
+  should pass that series to `urf_lagging_daily` with **daily** volumes.
   Spreading a monthly total uniformly across the month and applying a
   rolling daily kernel does **not** reproduce the monthly-shape response
   (late-month pulses leak into later calendar months). Only a pulse on
