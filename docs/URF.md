@@ -36,7 +36,10 @@ Once the kernels exist, any linear response (reach return flow in month
 effect(n) = Σ_{ν}  δ(n − ν + 1) · stress(ν)
 ```
 
-`δ(1)` is the response during the stress period itself.
+`δ(1)` is the response during the stress period itself. The period may be
+a month or a day: the kernel must be generated at the same step as the
+stress. A monthly `δ` applied to daily pumping (or the reverse) is a
+different operator.
 
 ### Unit hydrograph / fraction function
 
@@ -68,9 +71,14 @@ volume is `URF[x] * (rate × days)` — a volume times a fraction.
 - `URF[0]` is the stress timestep (0-based array).
 - Site type sets sign (`WELL = +1`, recharge = −1).
 - Horizon is truncated at `min(npa, URF.size())`.
-- Monthly vs daily arrays; optional “use monthly URF for daily.”
+- Monthly vs daily arrays (`m_URF_MonthlyData` / `m_URF_DailyData`).
+  Assignment is `timeUnits == DAYS ? daily : monthly`. The persisted flag
+  `URF uses monthly values for daily calculation` (`m_useMonthlyURFForDaily`)
+  is **not referenced** in the convolution — an AWAS footgun.
+- If a site has only daily URFs, AWAS forces a daily timestep (and the
+  reverse for monthly-only). That is the correct pairing.
 - No reach split; one series per site.
-- No interpolation of the tabulated values.
+- No interpolation of a monthly table onto days.
 - No check that the series sums to 1.
 - `GetFact * dela` is required because AWAS `Q` is a **rate**.
 
@@ -86,8 +94,9 @@ volume is `URF[x] * (rate × days)` — a volume times a fraction.
 | Recharge | Opposite sign | `m_pumpingSign` | Negative `usage` |
 | Units | Consistent volume × fraction | Rate × days × fraction | Caller passes **volume** (acre-feet) |
 | Normalization | Sum = 1 only if complete unit hydrograph | Not enforced | `urf_mass_by_reach`; no rescale |
-| Interpolation | None (discrete kernel) | None (optional monthly-as-daily copy) | None |
-| Reaches | Influence coeffs can be per reach | One series / site | `reach` key; `combined_urf_results` sums them |
+| Interpolation | None (kernel matches the step) | Flag exists; unused in calc. Picks daily vs monthly array by timestep | No silent interpolation. [`disaggregate_monthly_urf_uniform`] is opt-in equal-day split |
+| Daily vs monthly | Same convolution; different `δ` | Daily array + daily `Q`, or monthly + monthly | [`urf_lagging_daily`] + daily volumes; [`urf_lagging`] + monthly volumes |
+| Reaches | Influence coeffs can be per reach | One series / site | `reach` key; `combined_urf_results` (month totals) or `combined_urf_results_dated` |
 | SDF / Glover mix | Generate URF from `Δv/V`, never from `q/Q` | Separate `EFFECTIVE_SDF` / Glover paths | Separate modules; test locks `q/Q ≠ Δv/V` |
 
 ## Bugs found in the previous URF code
@@ -119,10 +128,14 @@ dense-table tests still pass.
 - **Do not stack URF on Glover or SDF** for the same stress. Do not load
   `erfc(u)` or `4 i²erfc(u)` into `UrfValue` unless you have converted
   them to *incremental volume fractions of a rectangular monthly pulse*.
-- **No daily URF and no interpolation.** AWAS can store a daily series
-  or reuse monthly values on a daily step (`m_useMonthlyURFForDaily`).
-  Spreading a monthly URF across days here would be an unstated
-  assumption.
+- **Do not interpolate a monthly URF onto daily pumping** unless you
+  deliberately call [`disaggregate_monthly_urf_uniform`] and accept the
+  equal-day-in-month assumption. A plan that has a native daily URF
+  should pass that series to [`urf_lagging_daily`] with **daily** volumes.
+  Spreading a monthly total uniformly across the month and applying a
+  rolling daily kernel does **not** reproduce the monthly-shape response
+  (late-month pulses leak into later calendar months). Only a pulse on
+  the 1st, with a kernel disaggregated from that month start, matches.
 - **AWAS rate units.** If you compare to Windows AWAS, convert AWAS `Q`
   to a monthly volume (`Q × GetFact × dela`) before comparing to this
   crate’s acre-foot usage.
@@ -145,6 +158,21 @@ January 2025:
 | 2025-02 | 50 |
 | 2025-03 | 30 |
 | **sum** | **100** |
+
+Daily native kernel `(0.50, 0.30, 0.20)`, 10 acre-feet on 10 January 2025:
+
+| Day | Effect (ac-ft) |
+| --- | ---: |
+| 2025-01-10 | 5 |
+| 2025-01-11 | 3 |
+| 2025-01-12 | 2 |
+| **sum** | **10** |
+
+A 100 acre-foot pulse on **1 January** using a monthly URF `(0.20, 0.50, 0.30)`
+equals that same monthly series uniformly split across Jan/Feb/Mar days
+and applied as a daily kernel to that single 1 January pulse. Spreading
+the 100 acre-feet across all 31 January days with that rolling daily
+kernel keeps total mass 100 but changes the monthly shape.
 
 Two successive 100 acre-foot months with `(0.25, 0.75)`:
 

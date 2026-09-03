@@ -176,10 +176,12 @@ References
 ## Unit response function (URF)
 
 A URF is a tabulated discrete kernel (Maddock 1972/1974; Morel-Seytoux and
-Daly 1975), not Glover or SDF. `UrfValue.month` is 1-based (month 1 = the
-stress month). Usage is a monthly **volume**; negative usage is recharge.
-The series is not rescaled to 1. Details, AWAS deviations, and remaining
-risks: [`docs/URF.md`](docs/URF.md).
+Daly 1975), not Glover or SDF. Monthly: `UrfValue.month` is 1-based
+(month 1 = stress month) with monthly volumes via `urf_lagging`. Daily
+plans: `DailyUrfValue.day` is 1-based (day 1 = stress day) with **daily**
+volumes via `urf_lagging_daily`. A daily kernel is not a monthly kernel
+interpolated onto days; `disaggregate_monthly_urf_uniform` is opt-in.
+Negative usage is recharge. Details: [`docs/URF.md`](docs/URF.md).
 
 ## Contributing
 

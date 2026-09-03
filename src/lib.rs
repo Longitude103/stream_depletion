@@ -20,7 +20,8 @@ pub use kernel::{
 };
 pub use sdf::calculate_streamflow_depletion_sdf;
 pub use urf::{
-    combined_urf_results, month_start, urf_lagging, urf_mass_by_reach, LaggedUrfByDate,
-    LaggedUrfResult, UrfValue,
+    combined_urf_results, combined_urf_results_dated, daily_urf_mass_by_reach,
+    disaggregate_monthly_urf_uniform, month_start, urf_lagging, urf_lagging_daily,
+    urf_mass_by_reach, DailyUrfValue, LaggedUrfByDate, LaggedUrfResult, UrfValue,
 };
 pub use utils::add_months;
