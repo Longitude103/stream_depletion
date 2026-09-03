@@ -173,6 +173,16 @@ References
 - Glover, R.E., & Balmer, G.G. (1954). River Depletion Resulting from Pumping a Well near a River. Eos, Transactions American Geophysical Union, 35(3), 468–470.
 - USGS Streamflow Depletion by Wells
 
+## Unit response function (URF)
+
+A URF is a tabulated discrete kernel (Maddock 1972/1974; Morel-Seytoux and
+Daly 1975), not Glover or SDF. Monthly: `UrfValue.month` is 1-based
+(month 1 = stress month) with monthly volumes via `urf_lagging`. Daily
+plans: `DailyUrfValue.day` is 1-based (day 1 = stress day) with **daily**
+volumes via `urf_lagging_daily`. A daily kernel is not a monthly kernel
+interpolated onto days; `disaggregate_monthly_urf_uniform` is opt-in.
+Negative usage is recharge. Details: [`docs/URF.md`](docs/URF.md).
+
 ## Contributing
 
 You are welcome contributions to stream_depletion Library! Whether you're fixing bugs, adding features, improving documentation, or reporting issues, your help is greatly appreciated. This guide outlines how to contribute to the project.
