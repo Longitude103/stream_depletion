@@ -2,9 +2,26 @@
 name = "stream_depletion"
 version = "0.1.0"
 edition = "2021"
+description = "Analytical stream depletion / lagged accretion (SDF, Glover, URF) for South Platte-style accounting"
+license = "MIT"
+repository = "https://github.com/Longitude103/stream_depletion"
+readme = "readme.md"
+
+# rlib keeps existing Rust consumers (lagging-api and any CLI that
+# `use stream_depletion`) on the same public API. cdylib is only needed
+# when the optional `python` feature is enabled by maturin.
+[lib]
+name = "stream_depletion"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# Off by default so `cargo build` / git-rev pins do not require Python.
+python = ["dep:pyo3"]
 
 [dependencies]
 libm = "0.2"
 chrono = "0.4.42"
 itertools = "0.14.0"
 serde = { version = "1.0.228", features = ["derive"] }
+pyo3 = { version = "0.25", optional = true }

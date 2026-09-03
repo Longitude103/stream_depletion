@@ -13,6 +13,20 @@ pub mod sdf;
 pub mod urf;
 pub mod utils;
 
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+
+/// Maturin loads `stream_depletion._native` (see `pyproject.toml`).
+/// The `python` feature is off by default so Rust dependents do not link PyO3.
+#[cfg(feature = "python")]
+#[pymodule]
+fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    python::register(module)
+}
+
 pub use glover_alluvial::calculate_streamflow_depletion_alluvial;
 pub use glover_infinite::calculate_streamflow_depletion_infinite;
 pub use kernel::{
