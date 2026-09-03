@@ -267,10 +267,12 @@ mod tests {
 
     #[test]
     fn glover_infinite_matches_sdf_when_sdf_equals_a2s_over_t() {
+        // Jenkins TWRI 4-D1 rounds a=3660 ft and T/S=134000 ft²/day to sdf=100 d;
+        // the exact identity is sdf = a² / (T/S) = 3660²/134000 ≈ 99.967 d.
+        // Use T/S = a²/100 so the kernels are algebraically identical.
         let a = 3660.0;
-        let t_over_s = 134_000.0; // Jenkins TWRI 4-D1 sample, ft²/day
         let s = 0.2;
-        let t = t_over_s * s;
+        let t = a * a * s / 100.0;
         let sdf = sdf_from_glover(a, s, t);
         assert!((sdf - 100.0).abs() < 1e-9);
 

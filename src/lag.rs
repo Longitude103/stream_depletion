@@ -127,18 +127,28 @@ mod tests {
     #[test]
     fn two_equal_months_superpose() {
         let kernel = ResponseKernel::EffectiveSdf { sdf_days: 50.0 };
-        let mut one = HashMap::new();
-        one.insert(month(2025, 1), 10.0);
-        let mut two = HashMap::new();
-        two.insert(month(2025, 1), 10.0);
-        two.insert(month(2025, 2), 10.0);
+        let mut ten = HashMap::new();
+        ten.insert(month(2025, 1), 10.0);
+        let mut five = HashMap::new();
+        five.insert(month(2025, 1), 5.0);
 
-        let a = lag_monthly_volumes(&one, &kernel, 30.0, 4);
-        let b = lag_monthly_volumes(&two, &kernel, 30.0, 4);
-        // February of `b` = January-pulse residual in Feb + new February pulse
-        // (the February pulse equals the January pulse shifted one month).
-        let jan_in_jan = a[0].1;
-        let jan_in_feb = a[1].1;
-        assert!((b[1].1 - (jan_in_feb + jan_in_jan)).abs() < 1e-10);
+        let a = lag_monthly_volumes(&ten, &kernel, 30.0, 4);
+        let half = lag_monthly_volumes(&five, &kernel, 30.0, 4);
+        for (left, right) in a.iter().zip(half.iter()) {
+            assert_eq!(left.0, right.0);
+            assert!((left.1 - 2.0 * right.1).abs() < 1e-12);
+        }
+
+        // January + February pulses: February total = Jan residual + a February-only
+        // pulse. Durations differ (31 vs 28 days), so the February pulse is computed
+        // from a start in February, not by shifting January.
+        let mut jan_feb = HashMap::new();
+        jan_feb.insert(month(2025, 1), 10.0);
+        jan_feb.insert(month(2025, 2), 10.0);
+        let mut feb_only = HashMap::new();
+        feb_only.insert(month(2025, 2), 10.0);
+        let ab = lag_monthly_volumes(&jan_feb, &kernel, 30.0, 4);
+        let feb = lag_monthly_volumes(&feb_only, &kernel, 30.0, 4);
+        assert!((ab[1].1 - (a[1].1 + feb[0].1)).abs() < 1e-10);
     }
 }
