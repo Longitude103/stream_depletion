@@ -1,0 +1,7 @@
+# Farmers Pawnee-style monthly recharge (acre-feet).
+# Positive numbers here are recharge; pass --as-recharge on the CLI
+# (or store negative volumes and omit that flag).
+# Replace 100.0 with the July accounting-month recharge volume and
+# pair with the plan's mapped SDF (days) — 265 is the crate's worked example.
+date,volume
+2025-07-01,100.0

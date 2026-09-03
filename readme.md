@@ -1,5 +1,101 @@
 # Stream Depletion Calculator
 
+Rust library **and** optional PyO3 Python bindings / CLI for lagged stream
+depletion and accretion (SDF, Glover, URF). South Platte accounting can
+run Farmers Pawnee-style SDF recharge lagging on Mac/Linux without the
+Windows-only IDS AWAS application.
+
+## Python install (Mac / Linux)
+
+From this repository, in your own directory / venv:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip maturin
+maturin develop
+# or: pip install .
+```
+
+`maturin develop` enables the optional Cargo `python` feature and installs
+the `stream_depletion` module plus the `stream-depletion` script. Rust-only
+consumers (lagging-api and any crate that `use stream_depletion`) are
+**unchanged**: `python` is off by default, public Rust signatures are the
+same, and you can keep pinning this repo by git revision.
+
+```bash
+# editable / from the crate root
+stream-depletion --help
+python -m stream_depletion --help
+```
+
+## Farmers Pawnee monthly recharge (replaces AWAS SDF)
+
+AWAS monthly SDF on a recharge site is a signed monthly pulse through
+Jenkins’ volume kernel. This crate does the same job with the published
+`v = Q t · 4 i²erfc(u)` formula and **calendar month** pulse lengths (not
+AWAS’s default `365/12 = 30.41667` “average days” unless you select
+actual days in AWAS). Positive volumes are pumping (depletion);
+**negative volumes are recharge (accretion)**.
+
+Use the plan’s **mapped SDF (days)**. `265` below is the crate’s worked
+example (see `docs/RESEARCH_VS_AWAS.md`), not a substitute for the
+Farmers Pawnee decree/map value. Do **not** stack the alluvial image
+series on top of a mapped SDF.
+
+**CLI** — example CSV stores July recharge as a positive acre-foot total;
+`--as-recharge` flips the sign:
+
+```bash
+stream-depletion \
+  --inflows examples/farmers_pawnee_july_recharge.csv \
+  --method sdf \
+  --sdf 265 \
+  --as-recharge \
+  --total-months 12 \
+  --output july_fp_accretions.csv
+```
+
+**Python** (pyOWW / long103-client-api / any accounting CLI):
+
+```python
+from stream_depletion import lag_sdf
+
+july_recharge_af = 100.0          # replace with July FP recharge
+mapped_sdf_days = 265             # replace with the plan SDF
+accretions = lag_sdf(
+    {"2025-07-01": -july_recharge_af},
+    sdf=mapped_sdf_days,
+    total_months=60,
+)
+# July is 31 days (same first-month volume as the January worked example);
+# later months follow the calendar (August = 31 days, not February's 28):
+# [("2025-07-01", -0.944405), ("2025-08-01", -8.183504), ...]
+```
+
+`calculate_streamflow_depletion_sdf` is the same function (Rust name).
+Other ARI Glover plans: `lag_glover_infinite` / `lag_glover_alluvial`
+(pass `T` in ft²/day, or convert GPD/ft with `gpd_per_ft_to_ft2_per_day`).
+Daily native SDF is **not** in the crate; daily plans that already have a
+tabulated kernel use `urf_lagging_daily`.
+
+Inflow CSV is `date,volume` (ISO `YYYY-MM-DD`) or `year,month,volume`.
+Output is `date,volume` (month start, same units as the input).
+
+### How this replaces IDS AWAS
+
+| AWAS (Windows) | This package |
+| --- | --- |
+| Site type Recharge, method SDF, monthly | `--method sdf` and negative volumes (or `--as-recharge`) |
+| Mapped SDF (days) | `--sdf` / `lag_sdf(..., sdf=...)` |
+| Monthly pumping file | `--inflows` CSV |
+| Average-days (`365/12`) vs actual days | Calendar days always (research-correct; AWAS actual-days is the closer setting) |
+| GUI / `.sdf` project | `stream-depletion` or `import stream_depletion` on Mac/Linux |
+
+Do not treat a small difference versus a Windows AWAS run as a regression
+until it is traced in `docs/RESEARCH_VS_AWAS.md` (average-days, `erfc`
+cutoffs, Kenny alluvial rewrite, etc.).
+
 ## Description
 
 The Stream Depletion Calculator is a Rust library designed to estimate the impact of groundwater pumping on streamflow. This library implements various methods for calculating stream depletion, including:
@@ -21,7 +117,9 @@ These methods allow users to model the effects of groundwater extraction on near
 
 ## Usage
 
-This package is not published yet to crates.io. To use at this point you must clone the repo and then add it to your "cargo.toml" file from your local computer.
+This package is not published yet to crates.io. Rust dependents (including
+lagging-api) should keep pinning a git revision as they do today. Clone
+the repo and add it to your `Cargo.toml`:
 
 Your toml file should look like the following:
 

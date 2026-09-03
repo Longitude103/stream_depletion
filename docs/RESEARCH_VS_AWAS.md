@@ -226,8 +226,11 @@ Identity: `4 i²erfc(1/2) ≈ 0.2798588938` (the 28% in the sdf definition).
 - **Other ARI Glover plans:** `calculate_streamflow_depletion_infinite`
   or `_alluvial`. Pass `T` in ft²/day. For alluvial, `aquifer_width` is
   stream-to-wall.
-- This crate is a **library**. There is still no command-line front end
-  in this repository.
+- This crate remains a **library** for Rust consumers (lagging-api pins
+  the git revision; the `python` feature is off by default). Optional
+  PyO3 bindings and a `stream-depletion` / `python -m stream_depletion`
+  CLI live behind that feature — see the README. Farmers Pawnee monthly
+  recharge: `lag_sdf` / `--method sdf` with negative volumes.
 - Do not treat a difference versus Windows AWAS as a crate regression
   until it has been traced to one of the rows above.
 
