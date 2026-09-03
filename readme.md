@@ -15,9 +15,9 @@ These methods allow users to model the effects of groundwater extraction on near
 
 - Calculate stream depletion using multiple analytical methods
 - Support for both infinite and alluvial aquifer scenarios
-- Flexible input of pumping volumes on a monthly basis
-- Time-series output of stream depletion estimates
-- Conversion utilities for different units and time scales
+- Flexible input of monthly pumping (+) or recharge (−) volumes
+- Time-series output of stream depletion / accretion estimates
+- Conversion helper for transmissivity in GPD/ft → ft²/day
 
 ## Usage
 
@@ -41,40 +41,58 @@ cargo run
 
 # Documentation
 
+A comparison of the published formulas, IDS AWAS/SEODEP, and this crate
+(including known AWAS deviations) is in [`docs/RESEARCH_VS_AWAS.md`](docs/RESEARCH_VS_AWAS.md).
+Monthly volumes use Glover’s integrated form `v = Q t · 4 i²erfc(u)` and
+Jenkins superposition. Positive monthly volumes are pumping (depletion);
+negative volumes are recharge (accretion). Transmissivity is **ft²/day**.
+
 ## Glover Equation with Image Wells for Alluvial Boundaries
 
 ### Overview
 The Glover equation (Glover and Balmer, 1954) estimates streamflow depletion due to groundwater pumping in alluvial aquifers. For aquifers with finite boundaries, such as impermeable valley walls, the equation is modified using the method of image wells to account for boundary effects. This approach, first introduced by Charles V. Theis in 1941, simulates the hydraulic impact of boundaries by adding contributions from imaginary wells.
 Standard Glover Equation
-For an infinite aquifer, the streamflow depletion \( Q_s(t) \) is calculated as:
+For an infinite aquifer, the streamflow depletion **rate** \( Q_s(t) \) is:
 
 $$
-Q_s(t) = Q_w \cdot \text{erfc}\left( \sqrt{\frac{S d^2}{4 T t}} \right)
+Q_s(t) = Q_w \cdot \text{erfc}\left( \sqrt{\frac{S a^2}{4 T t}} \right)
+$$
+
+The cumulative **volume** (Glover 1960; Hantush 1964; Jenkins 1968) is:
+
+$$
+v(t) = Q_w \, t \cdot 4\,\mathrm{i}^{2}\mathrm{erfc}(u), \quad u=\sqrt{S a^{2}/(4Tt)}
+$$
+
+$$
+4\,\mathrm{i}^{2}\mathrm{erfc}(u)=(1+2u^{2})\,\mathrm{erfc}(u)-\frac{2u}{\sqrt{\pi}}e^{-u^{2}}
 $$
 
 Where:
 
 \( Q_s(t) \): Streamflow depletion rate (L³/T)
-\( Q_w \): Pumping rate (L³/T)
+\( v(t) \): Cumulative stream depletion volume (L³)
+\( Q_w \): Pumping rate (L³/T); recharge is the same with opposite sign
 \( S \): Specific yield or storativity (dimensionless)
 \( T \): Transmissivity (L²/T)
-\( d \): Distance from well to stream (L)
+\( a \): Distance from well to stream (L)
 \( t \): Time since pumping began (T)
 \( \text{erfc} \): Complementary error function
 
 ### Modification for Alluvial Boundaries
-In alluvial aquifers bounded by impermeable features (e.g., valley walls), an image well is placed to simulate the boundary. For a single impermeable boundary at distance ( W ) from the well, perpendicular to the stream, the modified equation is:
+In a strip aquifer the stream is a constant-head boundary at \(x=0\) and the
+valley wall is a no-flow boundary at \(x=W\) (**stream-to-wall** width, the
+same `W` as SEODEP/AWAS). The well is at \(x=a\) with \(0<a<W\). Glover
+already includes the image across the stream; the remaining series
+(Schroeder 1987; McWhorter and Sunada 1977; Miller et al. 2007) is:
 
 $$
-Q_s(t) = Q_w \cdot \left[ \text{erfc}\left( \sqrt{\frac{S d^2}{4 T t}} \right) + \text{erfc}\left( \sqrt{\frac{S (2W - d)^2}{4 T t}} \right) \right]
+\frac{q}{Q}=\sum_{n=0}^{\infty}(-1)^{n}\left[\mathrm{erfc}\!\left(u(2nW+a)\right)+\mathrm{erfc}\!\left(u(2(n+1)W-a)\right)\right]
 $$
 
-Where:
-
-\( W \): Distance from well to the boundary (L)
-\( 2W - d \): Distance from image well to the stream (L)
-
-Multiple boundaries require additional image wells, increasing computational complexity.
+The first pair is \(\mathrm{erfc}(u(a))+\mathrm{erfc}(u(2W-a))\). Stopping
+there is only an early-time approximation. Volume uses the same coefficients
+on \(4\,\mathrm{i}^{2}\mathrm{erfc}\).
 
 ### Historical Context
 Charles V. Theis (1941): First proposed image wells for groundwater depletion problems in The Effect of a Well on the Flow of a Nearby Stream, addressing stream and impermeable boundaries.
@@ -111,19 +129,19 @@ Where:
 \( S \): Specific yield (unconfined) or storativity (confined) (dimensionless)
 \( T \): Transmissivity (L²/T)
 
-The SDF (units: time) indicates how quickly pumping affects the stream. A lower SDF implies faster depletion due to proximity, high transmissivity, or low storage.
+The SDF (units: time) is the time at which cumulative stream volume is 28%
+of the volume stressed. A lower SDF implies a faster stream response.
 
-### Depletion Equation
-Using the SDF, the streamflow depletion ( Q_s(t) ) is calculated as:
+Jenkins **defines** sdf as the time at which the cumulative stream volume
+is 28% of the volume stressed (`4 i²erfc(1/2) ≈ 0.27986`). Rate and volume:
 
-$$ Q_s(t) = Q_w \cdot \text{erfc}\left( \sqrt{\frac{\text{sdf}}{4 t}} \right) $$
+$$ q/Q = \mathrm{erfc}\sqrt{\mathrm{sdf}/(4t)} $$
 
-Where:
+$$ v/(Q t) = 4\,\mathrm{i}^{2}\mathrm{erfc}\sqrt{\mathrm{sdf}/(4t)} $$
 
-- \( Q_s(t) \): Streamflow depletion rate (L³/T)
-- \( Q_w \): Pumping rate (L³/T)
-- \( t \): Time since pumping began (T)
-- \( \text{erfc} \): Complementary error function
+After a pulse of length \(t_p\), residual effects are the difference of two
+continuous stresses (Jenkins superposition). Recharge uses the same
+formulas with opposite sign.
 
 ### Key Assumptions
 

@@ -1,162 +1,105 @@
-use crate::glover_alluvial::{
-    create_monthly_depletion, create_results_vector, monthly_pumping_to_daily,
-};
+use crate::kernel::ResponseKernel;
+use crate::lag::lag_monthly_volumes;
 use chrono::NaiveDate;
-use scirs2_special::erfc;
 use std::collections::HashMap;
 
-/// Calculates streamflow depletion for an infinite aquifer using the Glover solution.
+/// Monthly stream depletion / accretion using Glover and Balmer (1954).
 ///
-/// This function computes the monthly streamflow depletion based on given pumping volumes and aquifer parameters.
-/// It uses the Glover solution for an infinite aquifer to determine the depletion fractions and applies them to the pumping rates.
+/// Glover, R.E., and Balmer, G.G., 1954, River depletion resulting from
+/// pumping a well near a river: *Eos, Transactions American Geophysical
+/// Union*, v. 35, no. 3, p. 468–470.
+///
+/// ```text
+/// q/Q = erfc( √(a² S / (4 T t)) )
+/// ```
+///
+/// Monthly volumes use Glover’s (1960) integral, `v = Q t · 4 i²erfc(u)`,
+/// with Jenkins (1968) superposition for a rectangular monthly pulse.
+/// This is identical to [`crate::sdf::calculate_streamflow_depletion_sdf`]
+/// when `sdf = a² S / T`.
 ///
 /// # Parameters
 ///
-/// * `pumping_volumes_monthly`: A HashMap containing monthly pumping volumes in acre-ft/month, keyed by date.
-/// * `distance_to_well`: The distance from the well to the stream in feet.
-/// * `specific_yield`: The specific yield of the aquifer (dimensionless).
-/// * `transmissivity`: The transmissivity of the aquifer in ft²/day.
-/// * `days_per_month`: The average number of days per month used in calculations.
-/// * `total_months`: The total number of months to calculate depletion for.
-///
-/// # Returns
-///
-/// A Vec of tuples, where each tuple contains a date and the corresponding monthly streamflow depletion in acre-ft/month.
+/// * `pumping_volumes_monthly` — monthly volumes; positive = pumping,
+///   negative = recharge.
+/// * `distance_to_well` — perpendicular well-to-stream distance `a`, feet.
+/// * `specific_yield` — storativity / specific yield `S`, dimensionless.
+/// * `transmissivity` — `T` in **ft²/day** (convert GPD/ft with
+///   [`crate::kernel::gpd_per_ft_to_ft2_per_day`]).
+/// * `days_per_month` — retained for API compatibility; pulse lengths use
+///   calendar days.
+/// * `total_months` — calendar months to report from the first stress.
 pub fn calculate_streamflow_depletion_infinite(
-    pumping_volumes_monthly: &HashMap<NaiveDate, f64>, // Monthly pumping volumes in acre-ft / month
+    pumping_volumes_monthly: &HashMap<NaiveDate, f64>,
     distance_to_well: f64,
     specific_yield: f64,
     transmissivity: f64,
     days_per_month: f64,
     total_months: usize,
 ) -> Vec<(NaiveDate, f64)> {
-    // get total days
-    let total_days = (total_months as f64 * days_per_month).ceil() as usize;
-
-    // 1. calculate the depletion fraction for each time step
-    let mut base_depletion_fraction = vec![0.0; total_days];
-    for m in 0..total_days {
-        base_depletion_fraction[m] = calculate_depletion_fraction(
-            distance_to_well,
-            specific_yield,
-            transmissivity,
-            m as f64,
-        );
-    }
-
-    let pumping_rates_daily = monthly_pumping_to_daily(pumping_volumes_monthly);
-
-    // 3. Create a daily results Hashmap with daily time steps to hold the daily depletion amounts
-    let mut daily_depletion_amount = HashMap::new();
-    for (date, pumping_rate) in pumping_rates_daily {
-        if pumping_rate <= 0.0 {
-            continue;
-        }
-        let mut day_depletion = vec![0.0; total_days];
-        for base_depletion_index in 0..base_depletion_fraction.len() {
-            day_depletion[base_depletion_index] =
-                pumping_rate * base_depletion_fraction[base_depletion_index];
-        }
-
-        // add the day depletion to the daily depletion amount for the corresponding date and forward
-        for depletion_index in 0..day_depletion.len() {
-            let depletion_date = date + chrono::Duration::days(depletion_index as i64 + 1i64); // depletion is always the day after the pumping occurs
-            if depletion_index == 0 {
-                *daily_depletion_amount.entry(depletion_date).or_insert(0.0) +=
-                    day_depletion[depletion_index];
-                continue;
-            }
-
-            *daily_depletion_amount.entry(depletion_date).or_insert(0.0) +=
-                day_depletion[depletion_index] - day_depletion[depletion_index - 1];
-        }
-    }
-
-    let monthly_depletion_amount = create_monthly_depletion(&daily_depletion_amount);
-    let results = create_results_vector(
+    let kernel = ResponseKernel::GloverInfinite {
+        distance_ft: distance_to_well,
+        specific_yield,
+        transmissivity_ft2_per_day: transmissivity,
+    };
+    lag_monthly_volumes(
         pumping_volumes_monthly,
+        &kernel,
+        days_per_month,
         total_months,
-        &monthly_depletion_amount,
-    );
-
-    results
-}
-
-/// Calculates the depletion fraction for streamflow depletion using the Glover solution.
-///
-/// This function computes the fraction of pumping that has been captured from the stream
-/// at a given time, based on aquifer properties and the distance to the stream.
-///
-/// # Parameters
-///
-/// * `d`: Distance from the well to the stream (in length units, typically feet).
-/// * `s`: Storativity of the aquifer (dimensionless).
-/// * `t`: Transmissivity of the aquifer (in length²/time units, typically ft²/day).
-/// * `time`: Time since pumping began (in time units, typically days).
-///
-/// # Returns
-///
-/// Returns the depletion fraction as a `f64`, representing the proportion of pumping
-/// that has been captured from the stream at the given time.
-fn calculate_depletion_fraction(d: f64, s: f64, t: f64, time: f64) -> f64 {
-    // Calculate the argument of the complementary error function
-    let z = ((s * d.powi(2)) / (4.0 * t * time)).sqrt();
-    // Calculate erfc(z)
-    erfc(z)
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel::{gpd_per_ft_to_ft2_per_day, sdf_from_glover};
+    use crate::sdf::calculate_streamflow_depletion_sdf;
 
-    // Helper function to round a float to 5 decimal places
-    fn round_to_5_decimals(value: f64) -> f64 {
-        (value * 100_000.0).round() / 100_000.0
+    fn month(year: i32, month: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, 1).unwrap()
     }
 
     #[test]
-    fn test_with_infinite_aquifer() {
-        // Aquifer parameters (in feet-based units)
-        let d: f64 = 4000.0; // Distance to stream (ft)
-        let s: f64 = 0.2; // Storativity (dimensionless)
-        let t: f64 = 261_800.0; // Transmissivity (GPD/ft)
+    fn matches_sdf_method_for_ideal_sdf() {
+        let a = 4000.0;
+        let s = 0.2;
+        let t = gpd_per_ft_to_ft2_per_day(261_800.0);
+        let sdf = sdf_from_glover(a, s, t);
+        assert!((sdf - 91.437).abs() < 0.01);
 
-        // Pumping rates in acre-feet/month for month 1
-        let mut pumping_volumes = HashMap::new();
-        pumping_volumes.insert(NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(), 100.0); // acre-feet for month 1
-        let days_per_month = 30.42; // Average days per month
-        let total_months = 120; // 10 years
+        let mut pumping = HashMap::new();
+        pumping.insert(month(2025, 1), 100.0);
 
-        let converted_t = t / 7.481; // Convert GPD to ft2/day
-        let value = calculate_streamflow_depletion_infinite(
-            &pumping_volumes,
-            d,
-            s,
-            converted_t,
-            days_per_month,
-            total_months,
-        );
-        // println!("Monthly depletion amounts");
-        // for month in 0..value.len() {
-        //     println!("{}: {}", value[month].0, value[month].1);
-        // }
+        let glover = calculate_streamflow_depletion_infinite(&pumping, a, s, t, 30.42, 6);
+        let jenkins = calculate_streamflow_depletion_sdf(&pumping, sdf.round() as u32, 30.42, 6);
+        // sdf is rounded to an integer day for the u32 API; allow that quantization.
+        for (g, j) in glover.iter().zip(jenkins.iter()) {
+            assert_eq!(g.0, j.0);
+            assert!((g.1 - j.1).abs() / j.1.max(1e-6) < 0.02);
+        }
+    }
 
-        assert!(value.len() <= total_months); // Test if results vector has correct length
+    #[test]
+    fn january_100_af_matches_glover_volume_formula() {
+        let a = 4000.0;
+        let s = 0.2;
+        let t = gpd_per_ft_to_ft2_per_day(261_800.0);
+        let mut pumping = HashMap::new();
+        pumping.insert(month(2025, 1), 100.0);
+        let value = calculate_streamflow_depletion_infinite(&pumping, a, s, t, 30.42, 6);
 
-        let tolerance = 0.00001; // 10^-5 for 5 decimal places
-        
-        // values that should be checked are:
-        // 2025-01-01: 8.169915278703847
-        // 2025-02-01: 20.979264088137487
-        // 2025-03-01: 13.514164851251204
-        // 2025-04-01: 7.75855587035028
-        // 2025-05-01: 5.433551969020377
-        // 2025-06-01: 3.857354439468754
-        assert!((round_to_5_decimals(value[0].1) - 8.16991).abs() < tolerance);
-        assert!((round_to_5_decimals(value[1].1) - 20.97926).abs() < tolerance);
-        assert!((round_to_5_decimals(value[2].1) - 13.51416).abs() < tolerance);
-        assert!((round_to_5_decimals(value[3].1) - 7.75856).abs() < tolerance);
-        assert!((round_to_5_decimals(value[4].1) - 5.43355).abs() < tolerance);
-        assert!((round_to_5_decimals(value[5].1) - 3.85735).abs() < tolerance);
+        // Independent Jenkins/Glover volume evaluation of the same pulse.
+        let expected = [9.231024, 20.792231, 13.118033, 7.592177, 5.342934, 3.804862];
+        assert_eq!(value.len(), expected.len());
+        for (got, exp) in value.iter().zip(expected.iter()) {
+            assert!(
+                (got.1 - exp).abs() < 5e-6,
+                "{}: got {:.8} expected {:.8}",
+                got.0,
+                got.1,
+                exp
+            );
+        }
     }
 }
