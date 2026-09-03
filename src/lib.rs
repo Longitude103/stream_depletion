@@ -19,5 +19,8 @@ pub use kernel::{
     four_i2erfc, gpd_per_ft_to_ft2_per_day, sdf_from_glover, ResponseKernel, GALLONS_PER_CUBIC_FOOT,
 };
 pub use sdf::calculate_streamflow_depletion_sdf;
-pub use urf::{combined_urf_results, urf_lagging, LaggedUrfByDate, LaggedUrfResult, UrfValue};
+pub use urf::{
+    combined_urf_results, month_start, urf_lagging, urf_mass_by_reach, LaggedUrfByDate,
+    LaggedUrfResult, UrfValue,
+};
 pub use utils::add_months;
