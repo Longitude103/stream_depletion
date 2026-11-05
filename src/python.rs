@@ -4,11 +4,10 @@
 //! accept Python dates / dicts / sequences and return ISO date strings.
 
 use crate::{
-    calculate_streamflow_depletion_alluvial, calculate_streamflow_depletion_infinite,
-    calculate_streamflow_depletion_sdf, combined_urf_results, combined_urf_results_dated,
+    calculate_streamflow_depletion_no_flow, combined_urf_results, combined_urf_results_dated,
     daily_urf_mass_by_reach, disaggregate_monthly_urf_uniform, gpd_per_ft_to_ft2_per_day,
-    sdf_from_glover, urf_lagging, urf_lagging_daily, urf_mass_by_reach, DailyUrfValue,
-    LaggedUrfResult, UrfValue,
+    lag_monthly_volumes_with_month_length, sdf_from_glover, urf_lagging, urf_lagging_daily,
+    urf_mass_by_reach, DailyUrfValue, LaggedUrfResult, MonthLength, ResponseKernel, UrfValue,
 };
 use chrono::NaiveDate;
 use pyo3::exceptions::PyValueError;
@@ -231,33 +230,60 @@ fn mass_to_py(py: Python<'_>, masses: HashMap<i32, f64>) -> PyResult<Bound<'_, P
     Ok(out)
 }
 
+fn parse_month_length(raw: &str) -> PyResult<MonthLength> {
+    match raw {
+        "calendar" => Ok(MonthLength::Calendar),
+        "average" => Ok(MonthLength::Average),
+        other => Err(PyValueError::new_err(format!(
+            "month_length must be 'calendar' or 'average', got {other:?}"
+        ))),
+    }
+}
+
+fn lag_with_kernel(
+    inflows: &Bound<'_, PyAny>,
+    kernel: ResponseKernel,
+    month_length: &str,
+    total_months: usize,
+) -> PyResult<Vec<(String, f64)>> {
+    let map = parse_inflows(inflows)?;
+    lag_monthly_volumes_with_month_length(
+        &map,
+        &kernel,
+        parse_month_length(month_length)?,
+        total_months,
+    )
+    .map(monthly_rows)
+    .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
 /// Monthly Jenkins SDF lagging. Positive volumes = pumping (depletion);
 /// negative = recharge (accretion). Farmers Pawnee recharge uses the
 /// negative-volume path with a mapped sdf (days).
 ///
-/// `days_per_month` is accepted for Rust-API compatibility and is unused;
-/// pulse lengths are calendar month lengths.
+/// `days_per_month` has no effect and is kept for existing callers. Set
+/// `month_length` to `"average"` for uniform 30.41667-day months; the default
+/// `"calendar"` uses actual month lengths. Invalid parameters raise `ValueError`.
 #[pyfunction]
-#[pyo3(name = "lag_sdf", signature = (inflows, sdf, total_months, days_per_month=30.42))]
+#[pyo3(name = "lag_sdf", signature = (inflows, sdf, total_months, days_per_month=30.42, month_length="calendar"))]
 fn py_lag_sdf(
     inflows: Bound<'_, PyAny>,
     sdf: u32,
     total_months: u32,
     days_per_month: f64,
+    month_length: &str,
 ) -> PyResult<Vec<(String, f64)>> {
-    let map = parse_inflows(&inflows)?;
-    Ok(monthly_rows(calculate_streamflow_depletion_sdf(
-        &map,
-        sdf,
-        days_per_month,
-        total_months,
-    )))
+    let _ = days_per_month;
+    let kernel = ResponseKernel::EffectiveSdf {
+        sdf_days: sdf as f64,
+    };
+    lag_with_kernel(&inflows, kernel, month_length, total_months as usize)
 }
 
 #[pyfunction]
 #[pyo3(
     name = "lag_glover_infinite",
-    signature = (inflows, distance_ft, specific_yield, transmissivity_ft2_per_day, total_months, days_per_month=30.42)
+    signature = (inflows, distance_ft, specific_yield, transmissivity_ft2_per_day, total_months, days_per_month=30.42, month_length="calendar")
 )]
 fn py_lag_glover_infinite(
     inflows: Bound<'_, PyAny>,
@@ -266,22 +292,22 @@ fn py_lag_glover_infinite(
     transmissivity_ft2_per_day: f64,
     total_months: usize,
     days_per_month: f64,
+    month_length: &str,
 ) -> PyResult<Vec<(String, f64)>> {
-    let map = parse_inflows(&inflows)?;
-    Ok(monthly_rows(calculate_streamflow_depletion_infinite(
-        &map,
+    let _ = days_per_month;
+    let kernel = ResponseKernel::GloverInfinite {
         distance_ft,
         specific_yield,
         transmissivity_ft2_per_day,
-        days_per_month,
-        total_months,
-    )))
+    };
+    lag_with_kernel(&inflows, kernel, month_length, total_months)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[pyfunction]
 #[pyo3(
     name = "lag_glover_alluvial",
-    signature = (inflows, distance_ft, aquifer_width_ft, specific_yield, transmissivity_ft2_per_day, total_months, days_per_month=30.42)
+    signature = (inflows, distance_ft, aquifer_width_ft, specific_yield, transmissivity_ft2_per_day, total_months, days_per_month=30.42, month_length="calendar")
 )]
 fn py_lag_glover_alluvial(
     inflows: Bound<'_, PyAny>,
@@ -291,17 +317,47 @@ fn py_lag_glover_alluvial(
     transmissivity_ft2_per_day: f64,
     total_months: usize,
     days_per_month: f64,
+    month_length: &str,
 ) -> PyResult<Vec<(String, f64)>> {
-    let map = parse_inflows(&inflows)?;
-    Ok(monthly_rows(calculate_streamflow_depletion_alluvial(
-        &map,
+    let _ = days_per_month;
+    let kernel = ResponseKernel::GloverAlluvial {
         distance_ft,
         aquifer_width_ft,
         specific_yield,
         transmissivity_ft2_per_day,
-        days_per_month,
+    };
+    lag_with_kernel(&inflows, kernel, month_length, total_months)
+}
+
+/// Glover with a no-flow boundary perpendicular to the stream, at
+/// `boundary_distance_ft` along the stream from the well. Whole-stream results
+/// equal `lag_glover_infinite` for any boundary distance.
+#[pyfunction]
+#[pyo3(
+    name = "lag_glover_no_flow",
+    signature = (inflows, distance_ft, boundary_distance_ft, specific_yield, transmissivity_ft2_per_day, total_months, month_length="calendar")
+)]
+fn py_lag_glover_no_flow(
+    inflows: Bound<'_, PyAny>,
+    distance_ft: f64,
+    boundary_distance_ft: f64,
+    specific_yield: f64,
+    transmissivity_ft2_per_day: f64,
+    total_months: usize,
+    month_length: &str,
+) -> PyResult<Vec<(String, f64)>> {
+    let map = parse_inflows(&inflows)?;
+    calculate_streamflow_depletion_no_flow(
+        &map,
+        distance_ft,
+        boundary_distance_ft,
+        specific_yield,
+        transmissivity_ft2_per_day,
+        parse_month_length(month_length)?,
         total_months,
-    )))
+    )
+    .map(monthly_rows)
+    .map_err(|err| PyValueError::new_err(err.to_string()))
 }
 
 #[pyfunction]
@@ -394,6 +450,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(py_lag_sdf, module)?)?;
     module.add_function(wrap_pyfunction!(py_lag_glover_infinite, module)?)?;
     module.add_function(wrap_pyfunction!(py_lag_glover_alluvial, module)?)?;
+    module.add_function(wrap_pyfunction!(py_lag_glover_no_flow, module)?)?;
     module.add_function(wrap_pyfunction!(py_urf_lagging, module)?)?;
     module.add_function(wrap_pyfunction!(py_urf_lagging_daily, module)?)?;
     module.add_function(wrap_pyfunction!(py_combined_urf_results, module)?)?;
@@ -418,6 +475,10 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add(
         "calculate_streamflow_depletion_alluvial",
         module.getattr("lag_glover_alluvial")?,
+    )?;
+    module.add(
+        "calculate_streamflow_depletion_no_flow",
+        module.getattr("lag_glover_no_flow")?,
     )?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())

@@ -17,7 +17,7 @@ import csv
 import io
 import sys
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence, TextIO
+from typing import Callable, Iterable, Mapping, Sequence, TextIO
 
 from stream_depletion import (
     combined_urf_results,
@@ -25,6 +25,7 @@ from stream_depletion import (
     gpd_per_ft_to_ft2_per_day,
     lag_glover_alluvial,
     lag_glover_infinite,
+    lag_glover_no_flow,
     lag_sdf,
     urf_lagging,
     urf_lagging_daily,
@@ -161,7 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--method",
         "-m",
         required=True,
-        choices=("sdf", "glover", "glover-alluvial", "urf"),
+        choices=("sdf", "glover", "glover-alluvial", "glover-no-flow", "urf"),
         help="Lagging kernel. Farmers Pawnee uses sdf; other ARI plans may use glover.",
     )
     parser.add_argument(
@@ -184,7 +185,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--days-per-month",
         type=float,
         default=30.42,
-        help="Accepted for API compatibility; pulse lengths use calendar days.",
+        help="Accepted for API compatibility; has no effect. See --month-length.",
+    )
+    parser.add_argument(
+        "--month-length",
+        choices=("calendar", "average"),
+        default="calendar",
+        help=(
+            "SDF/Glover month length: actual calendar days (default), or uniform "
+            "30.41667-day months like AWAS 'use average days per month'."
+        ),
     )
     parser.add_argument("--distance", type=float, help="Well-to-stream distance a, feet (Glover).")
     parser.add_argument("--specific-yield", type=float, help="Storativity / specific yield S (Glover).")
@@ -202,6 +212,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--aquifer-width",
         type=float,
         help="Stream-to-wall aquifer width W, feet (--method glover-alluvial).",
+    )
+    parser.add_argument(
+        "--boundary-distance",
+        type=float,
+        help=(
+            "Well-to-boundary distance b along the stream, feet (--method glover-no-flow). "
+            "Whole-stream results do not depend on it."
+        ),
     )
     parser.add_argument(
         "--urf",
@@ -226,63 +244,97 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _compute(args: argparse.Namespace, inflows: dict[str, float]) -> Callable[[TextIO], None]:
+    """Run the lag and return a function that writes the result."""
+    if args.method == "sdf":
+        if args.sdf is None:
+            raise SystemExit("--sdf DAYS is required for --method sdf")
+        rows = lag_sdf(
+            inflows,
+            args.sdf,
+            args.total_months,
+            args.days_per_month,
+            args.month_length,
+        )
+    elif args.method == "glover":
+        if args.distance is None or args.specific_yield is None:
+            raise SystemExit("--distance and --specific-yield are required for --method glover")
+        rows = lag_glover_infinite(
+            inflows,
+            args.distance,
+            args.specific_yield,
+            _glover_transmissivity(args),
+            args.total_months,
+            args.days_per_month,
+            args.month_length,
+        )
+    elif args.method == "glover-alluvial":
+        if args.distance is None or args.specific_yield is None or args.aquifer_width is None:
+            raise SystemExit(
+                "--distance, --specific-yield, and --aquifer-width are required "
+                "for --method glover-alluvial"
+            )
+        rows = lag_glover_alluvial(
+            inflows,
+            args.distance,
+            args.aquifer_width,
+            args.specific_yield,
+            _glover_transmissivity(args),
+            args.total_months,
+            args.days_per_month,
+            args.month_length,
+        )
+    elif args.method == "glover-no-flow":
+        if (
+            args.distance is None
+            or args.specific_yield is None
+            or args.boundary_distance is None
+        ):
+            raise SystemExit(
+                "--distance, --specific-yield, and --boundary-distance are required "
+                "for --method glover-no-flow"
+            )
+        rows = lag_glover_no_flow(
+            inflows,
+            args.distance,
+            args.boundary_distance,
+            args.specific_yield,
+            _glover_transmissivity(args),
+            args.total_months,
+            args.month_length,
+        )
+    else:
+        if not args.urf:
+            raise SystemExit("--urf FILE is required for --method urf")
+        kernel = read_urf(args.urf, args.timestep)
+        if args.timestep == "daily":
+            lagged = urf_lagging_daily(inflows, kernel)
+            combined = combined_urf_results_dated(lagged)
+        else:
+            lagged = urf_lagging(inflows, kernel)
+            combined = combined_urf_results(lagged)
+        if args.by_reach:
+            return lambda out: _write_reach_map(out, lagged)
+        return lambda out: _write_pairs(out, combined)
+    return lambda out: _write_pairs(out, rows)
+
+
 def run(args: argparse.Namespace) -> int:
     inflows = read_inflows(args.inflows)
     if args.as_recharge:
         inflows = {date: -volume for date, volume in inflows.items()}
 
-    out = Path(args.output).open("w", newline="", encoding="utf-8") if args.output else sys.stdout
+    # Compute first, so a bad parameter leaves an existing output file alone.
     try:
-        if args.method == "sdf":
-            if args.sdf is None:
-                raise SystemExit("--sdf DAYS is required for --method sdf")
-            rows = lag_sdf(inflows, args.sdf, args.total_months, args.days_per_month)
-            _write_pairs(out, rows)
-        elif args.method == "glover":
-            if args.distance is None or args.specific_yield is None:
-                raise SystemExit("--distance and --specific-yield are required for --method glover")
-            rows = lag_glover_infinite(
-                inflows,
-                args.distance,
-                args.specific_yield,
-                _glover_transmissivity(args),
-                args.total_months,
-                args.days_per_month,
-            )
-            _write_pairs(out, rows)
-        elif args.method == "glover-alluvial":
-            if args.distance is None or args.specific_yield is None or args.aquifer_width is None:
-                raise SystemExit(
-                    "--distance, --specific-yield, and --aquifer-width are required "
-                    "for --method glover-alluvial"
-                )
-            rows = lag_glover_alluvial(
-                inflows,
-                args.distance,
-                args.aquifer_width,
-                args.specific_yield,
-                _glover_transmissivity(args),
-                args.total_months,
-                args.days_per_month,
-            )
-            _write_pairs(out, rows)
-        else:
-            if not args.urf:
-                raise SystemExit("--urf FILE is required for --method urf")
-            kernel = read_urf(args.urf, args.timestep)
-            if args.timestep == "daily":
-                lagged = urf_lagging_daily(inflows, kernel)
-                combined = combined_urf_results_dated(lagged)
-            else:
-                lagged = urf_lagging(inflows, kernel)
-                combined = combined_urf_results(lagged)
-            if args.by_reach:
-                _write_reach_map(out, lagged)
-            else:
-                _write_pairs(out, combined)
-    finally:
-        if args.output:
-            out.close()
+        write = _compute(args, inflows)
+    except ValueError as err:
+        raise SystemExit(f"error: {err}") from err
+
+    if args.output:
+        with Path(args.output).open("w", newline="", encoding="utf-8") as out:
+            write(out)
+    else:
+        write(sys.stdout)
     return 0
 
 

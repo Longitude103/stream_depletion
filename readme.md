@@ -33,9 +33,10 @@ python -m stream_depletion --help
 
 AWAS monthly SDF on a recharge site is a signed monthly pulse through
 Jenkins’ volume kernel. This crate does the same job with the published
-`v = Q t · 4 i²erfc(u)` formula and **calendar month** pulse lengths (not
-AWAS’s default `365/12 = 30.41667` “average days” unless you select
-actual days in AWAS). Positive volumes are pumping (depletion);
+`v = Q t · 4 i²erfc(u)` formula. Pulse lengths are **calendar months** by
+default; pass `month_length="average"` (`--month-length average`) for the
+uniform `30.41667`-day months of AWAS’s “use average days per month”.
+Positive volumes are pumping (depletion);
 **negative volumes are recharge (accretion)**.
 
 Use the plan’s **mapped SDF (days)**. `265` below is the crate’s worked
@@ -74,8 +75,9 @@ accretions = lag_sdf(
 ```
 
 `calculate_streamflow_depletion_sdf` is the same function (Rust name).
-Other ARI Glover plans: `lag_glover_infinite` / `lag_glover_alluvial`
-(pass `T` in ft²/day, or convert GPD/ft with `gpd_per_ft_to_ft2_per_day`).
+Other ARI Glover plans: `lag_glover_infinite` / `lag_glover_alluvial` /
+`lag_glover_no_flow` (pass `T` in ft²/day, or convert GPD/ft with
+`gpd_per_ft_to_ft2_per_day`).
 Daily native SDF is **not** in the crate; daily plans that already have a
 tabulated kernel use `urf_lagging_daily`.
 
@@ -89,12 +91,15 @@ Output is `date,volume` (month start, same units as the input).
 | Site type Recharge, method SDF, monthly | `--method sdf` and negative volumes (or `--as-recharge`) |
 | Mapped SDF (days) | `--sdf` / `lag_sdf(..., sdf=...)` |
 | Monthly pumping file | `--inflows` CSV |
-| Average-days (`365/12`) vs actual days | Calendar days always (research-correct; AWAS actual-days is the closer setting) |
+| Use average days per month on | `--month-length average` / `month_length="average"` / `MonthLength::Average` |
+| Use average days per month off | Default: calendar days |
+| Glover alluvial (`boundary condition=1`) | `--method glover-alluvial` |
+| No-flow boundary (`boundary condition=2`, `zzseg=0`) | `--method glover-no-flow`. Whole-stream results do not depend on the boundary distance; see `docs/RESEARCH_VS_AWAS.md`. Stream segments (`zzseg=1`) are not implemented |
 | GUI / `.sdf` project | `stream-depletion` or `import stream_depletion` on Mac/Linux |
 
 Do not treat a small difference versus a Windows AWAS run as a regression
-until it is traced in `docs/RESEARCH_VS_AWAS.md` (average-days, `erfc`
-cutoffs, Kenny alluvial rewrite, etc.).
+until it is traced in `docs/RESEARCH_VS_AWAS.md` (`erfc` cutoffs, Kenny
+alluvial rewrite, etc.).
 
 ## Description
 
@@ -110,7 +115,8 @@ These methods allow users to model the effects of groundwater extraction on near
 ## Features
 
 - Calculate stream depletion using multiple analytical methods
-- Support for both infinite and alluvial aquifer scenarios
+- Support for infinite, alluvial, and perpendicular no-flow aquifer scenarios
+- Calendar or average (30.41667-day) months
 - Flexible input of monthly pumping (+) or recharge (−) volumes
 - Time-series output of stream depletion / accretion estimates
 - Conversion helper for transmissivity in GPD/ft → ft²/day

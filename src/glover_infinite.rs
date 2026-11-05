@@ -26,8 +26,9 @@ use std::collections::HashMap;
 /// * `specific_yield` — storativity / specific yield `S`, dimensionless.
 /// * `transmissivity` — `T` in **ft²/day** (convert GPD/ft with
 ///   [`crate::kernel::gpd_per_ft_to_ft2_per_day`]).
-/// * `days_per_month` — retained for API compatibility; pulse lengths use
-///   calendar days.
+/// * `days_per_month` — has no effect; pulse lengths use calendar days. For
+///   average months or checked parameters, use
+///   [`crate::lag::lag_monthly_volumes_with_month_length`].
 /// * `total_months` — calendar months to report from the first stress.
 pub fn calculate_streamflow_depletion_infinite(
     pumping_volumes_monthly: &HashMap<NaiveDate, f64>,
