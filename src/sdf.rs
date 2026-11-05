@@ -18,8 +18,9 @@ use std::collections::HashMap;
 ///   negative = recharge (accretion), typically acre-feet. Keys are dates in
 ///   the stress month (day-of-month is ignored).
 /// * `sdf` — stream depletion factor in days.
-/// * `days_per_month` — retained for API compatibility; pulse lengths use
-///   calendar days (see [`crate::lag::lag_monthly_volumes`]).
+/// * `days_per_month` — has no effect; pulse lengths use calendar days. For
+///   average months or checked parameters, use
+///   [`crate::lag::lag_monthly_volumes_with_month_length`].
 /// * `total_months` — number of calendar months to report from the first stress.
 ///
 /// # Returns

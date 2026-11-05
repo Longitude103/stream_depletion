@@ -22,8 +22,9 @@ use std::collections::HashMap;
 /// * `aquifer_width` — stream-to-no-flow-boundary distance `W`, feet.
 /// * `specific_yield` — `S`, dimensionless.
 /// * `transmissivity` — `T` in **ft²/day**.
-/// * `days_per_month` — retained for API compatibility; pulse lengths use
-///   calendar days.
+/// * `days_per_month` — has no effect; pulse lengths use calendar days. For
+///   average months or checked parameters, use
+///   [`crate::lag::lag_monthly_volumes_with_month_length`].
 /// * `total_months` — calendar months to report from the first stress.
 pub fn calculate_streamflow_depletion_alluvial(
     pumping_volumes_monthly: &HashMap<NaiveDate, f64>,

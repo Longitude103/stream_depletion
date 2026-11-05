@@ -7,6 +7,7 @@
 
 pub mod glover_alluvial;
 pub mod glover_infinite;
+pub mod glover_no_flow;
 pub mod kernel;
 pub mod lag;
 pub mod sdf;
@@ -29,8 +30,13 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
 
 pub use glover_alluvial::calculate_streamflow_depletion_alluvial;
 pub use glover_infinite::calculate_streamflow_depletion_infinite;
+pub use glover_no_flow::calculate_streamflow_depletion_no_flow;
 pub use kernel::{
-    four_i2erfc, gpd_per_ft_to_ft2_per_day, sdf_from_glover, ResponseKernel, GALLONS_PER_CUBIC_FOOT,
+    four_i2erfc, gpd_per_ft_to_ft2_per_day, sdf_from_glover, ParameterError, ResponseKernel,
+    GALLONS_PER_CUBIC_FOOT,
+};
+pub use lag::{
+    lag_monthly_volumes, lag_monthly_volumes_with_month_length, MonthLength, AVERAGE_DAYS_PER_MONTH,
 };
 pub use sdf::calculate_streamflow_depletion_sdf;
 pub use urf::{

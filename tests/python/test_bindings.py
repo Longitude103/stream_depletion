@@ -140,3 +140,21 @@ def test_rust_name_aliases_are_the_same_callables():
     from stream_depletion import calculate_streamflow_depletion_sdf
 
     assert calculate_streamflow_depletion_sdf is lag_sdf
+
+
+def test_bad_parameters_raise_value_error():
+    import stream_depletion
+
+    inflows = {"2025-01-01": 100.0}
+    with pytest.raises(ValueError, match="sdf_days"):
+        stream_depletion.lag_sdf(inflows, 0, 6)
+    with pytest.raises(ValueError, match="transmissivity"):
+        stream_depletion.lag_glover_infinite(inflows, 1000.0, 0.2, 0.0, 6)
+    with pytest.raises(ValueError, match="beyond the aquifer width"):
+        stream_depletion.lag_glover_alluvial(inflows, 1000.0, 500.0, 0.2, 30000.0, 6)
+    with pytest.raises(ValueError, match="boundary_distance_ft"):
+        stream_depletion.lag_glover_no_flow(inflows, 1000.0, -1.0, 0.2, 30000.0, 6)
+    with pytest.raises(ValueError, match="month_length"):
+        stream_depletion.lag_sdf(inflows, 265, 6, month_length="weekly")
+    with pytest.raises(ValueError, match="stress volume"):
+        stream_depletion.lag_sdf({"2025-01-01": float("nan")}, 265, 6)
