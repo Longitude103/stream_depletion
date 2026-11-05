@@ -320,14 +320,13 @@ def _compute(args: argparse.Namespace, inflows: dict[str, float]) -> Callable[[T
 
 
 def run(args: argparse.Namespace) -> int:
-    inflows = read_inflows(args.inflows)
-    if args.as_recharge:
-        inflows = {date: -volume for date, volume in inflows.items()}
-
-    # Compute first, so a bad parameter leaves an existing output file alone.
+    # Compute first, so bad input leaves an existing output file alone.
     try:
+        inflows = read_inflows(args.inflows)
+        if args.as_recharge:
+            inflows = {date: -volume for date, volume in inflows.items()}
         write = _compute(args, inflows)
-    except ValueError as err:
+    except (ValueError, OverflowError) as err:
         raise SystemExit(f"error: {err}") from err
 
     if args.output:

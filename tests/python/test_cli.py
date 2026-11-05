@@ -147,3 +147,21 @@ def test_cli_bad_parameter_exits_cleanly_and_keeps_existing_output(tmp_path):
             ]
         )
     assert out.read_text(encoding="utf-8") == "previous results\n"
+
+
+@pytest.mark.parametrize(
+    ("volume", "extra"),
+    [
+        ("abc", ["--sdf", "265"]),
+        ("100", ["--sdf", "-1"]),
+        ("100", ["--sdf", "265", "--total-months", "-1"]),
+    ],
+)
+def test_cli_other_bad_input_exits_cleanly(tmp_path, volume, extra):
+    usage = tmp_path / "usage.csv"
+    usage.write_text(f"date,volume\n2025-01-01,{volume}\n", encoding="utf-8")
+    out = tmp_path / "keep.csv"
+    out.write_text("previous results\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="error:"):
+        main(["--inflows", str(usage), "--method", "sdf", "--output", str(out), *extra])
+    assert out.read_text(encoding="utf-8") == "previous results\n"

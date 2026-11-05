@@ -15,7 +15,7 @@
 use crate::kernel::{pulse_cumulative_volume, ParameterError, ResponseKernel};
 use crate::utils::add_months;
 use chrono::{Datelike, NaiveDate};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Length of one month under [`MonthLength::Average`], in days: `365/12`
 /// rounded to the value IDS AWAS uses (`SiteData::GetFact`). The literal is kept
@@ -131,14 +131,17 @@ fn lag_unchecked(
     let origin = *stress_volumes_monthly.keys().min().unwrap();
     let start_month = NaiveDate::from_ymd_opt(origin.year(), origin.month(), 1).unwrap();
 
-    // Collapse multiple entries in the same calendar month.
-    let mut month_stress: HashMap<NaiveDate, f64> = HashMap::new();
-    for (date, volume) in stress_volumes_monthly {
+    // Collapse multiple entries in the same calendar month. HashMap order varies
+    // by run, so add in date order to keep results reproducible.
+    let mut entries: Vec<_> = stress_volumes_monthly.iter().collect();
+    entries.sort_by_key(|(date, _)| **date);
+    let mut month_stress: BTreeMap<NaiveDate, f64> = BTreeMap::new();
+    for (date, volume) in entries {
         let month = NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap();
         *month_stress.entry(month).or_insert(0.0) += *volume;
     }
 
-    let mut pulses: Vec<Pulse> = month_stress
+    let pulses: Vec<Pulse> = month_stress
         .iter()
         .filter(|(_, v)| **v != 0.0)
         .map(|(month, volume)| {
@@ -150,8 +153,6 @@ fn lag_unchecked(
             }
         })
         .collect();
-    // HashMap order varies by run; a fixed sum order keeps results reproducible.
-    pulses.sort_by(|a, b| a.start_day.total_cmp(&b.start_day));
 
     let mut results = Vec::with_capacity(total_months);
     for month_index in 0..total_months {
@@ -401,9 +402,13 @@ mod tests {
         let kernel = ResponseKernel::EffectiveSdf { sdf_days: 265.0 };
         let run = || {
             // Each HashMap gets its own random iteration order.
-            let stress: HashMap<NaiveDate, f64> = (0..48)
+            let mut stress: HashMap<NaiveDate, f64> = (0..48)
                 .map(|i| (add_months(month(2020, 1), i).unwrap(), 1.1 + i as f64 / 7.0))
                 .collect();
+            // Several entries in one month are added together.
+            for (day, volume) in [(10, 0.1), (15, 0.2), (20, 0.3), (25, 0.7)] {
+                stress.insert(NaiveDate::from_ymd_opt(2020, 1, day).unwrap(), volume);
+            }
             lag_monthly_volumes(&stress, &kernel, 30.42, 96)
         };
         let first = run();
