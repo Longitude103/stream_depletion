@@ -69,7 +69,7 @@ fn iso(date: NaiveDate) -> String {
 
 fn parse_inflows(obj: &Bound<'_, PyAny>) -> PyResult<HashMap<NaiveDate, f64>> {
     let mut map = HashMap::new();
-    if let Ok(dict) = obj.downcast::<PyDict>() {
+    if let Ok(dict) = obj.cast::<PyDict>() {
         for (key, value) in dict.iter() {
             let volume: f64 = value.extract()?;
             *map.entry(parse_date(&key)?).or_insert(0.0) += volume;
@@ -87,7 +87,7 @@ fn parse_inflows(obj: &Bound<'_, PyAny>) -> PyResult<HashMap<NaiveDate, f64>> {
             *map.entry(parse_date(&date_obj)?).or_insert(0.0) += volume;
             continue;
         }
-        if let Ok(mapping) = item.downcast::<PyDict>() {
+        if let Ok(mapping) = item.cast::<PyDict>() {
             let date_obj = mapping
                 .get_item("date")?
                 .or_else(|| mapping.get_item("month").ok().flatten())
@@ -112,7 +112,7 @@ fn monthly_rows(rows: Vec<(NaiveDate, f64)>) -> Vec<(String, f64)> {
 }
 
 fn field_i32(item: &Bound<'_, PyAny>, names: &[&str]) -> PyResult<i32> {
-    if let Ok(mapping) = item.downcast::<PyDict>() {
+    if let Ok(mapping) = item.cast::<PyDict>() {
         for name in names {
             if let Ok(Some(v)) = mapping.get_item(*name) {
                 return v.extract();
@@ -132,7 +132,7 @@ fn field_i32(item: &Bound<'_, PyAny>, names: &[&str]) -> PyResult<i32> {
 }
 
 fn field_f64(item: &Bound<'_, PyAny>, names: &[&str]) -> PyResult<f64> {
-    if let Ok(mapping) = item.downcast::<PyDict>() {
+    if let Ok(mapping) = item.cast::<PyDict>() {
         for name in names {
             if let Ok(Some(v)) = mapping.get_item(*name) {
                 return v.extract();
@@ -205,13 +205,13 @@ fn lagged_to_py(py: Python<'_>, result: LaggedUrfResult) -> PyResult<Bound<'_, P
 
 fn lagged_from_py(obj: &Bound<'_, PyAny>) -> PyResult<LaggedUrfResult> {
     let dict = obj
-        .downcast::<PyDict>()
+        .cast::<PyDict>()
         .map_err(|_| PyValueError::new_err("lagged URF result must be {reach: {date: volume}}"))?;
     let mut result = HashMap::new();
     for (reach_key, inner_obj) in dict.iter() {
         let reach: i32 = reach_key.extract()?;
         let inner_dict = inner_obj
-            .downcast::<PyDict>()
+            .cast::<PyDict>()
             .map_err(|_| PyValueError::new_err("each reach map must be {date: volume}"))?;
         let mut inner = HashMap::new();
         for (date_key, volume) in inner_dict.iter() {
