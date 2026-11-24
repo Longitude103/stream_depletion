@@ -22,6 +22,5 @@ python = ["dep:pyo3"]
 [dependencies]
 libm = "0.2.16"
 chrono = "0.4.45"
-itertools = "0.15.0"
 serde = { version = "1.0.229", features = ["derive"] }
 pyo3 = { version = "0.30", optional = true }
